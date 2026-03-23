@@ -23,6 +23,8 @@
             --accent-text: #000000;
             --hover-bg: #2a2a2a;
             --canvas-bg: #2c2c2c;
+            --log-bg: #000000;
+            --log-text: #00ff00;
         }
 
         [data-theme="light"] {
@@ -36,6 +38,8 @@
             --accent-text: #ffffff;
             --hover-bg: #e8e8e8;
             --canvas-bg: #d0d0d0;
+            --log-bg: #ffffff;
+            --log-text: #000000;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -86,10 +90,14 @@
         .icon-btn-group { display: flex; gap: 2px; }
         .icon-btn-group button { padding: 6px 8px; }
 
-        /* Loading Overlay */
-        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); color: white; z-index: 9999; justify-content: center; align-items: center; font-size: 20px; flex-direction: column; gap: 15px; }
+        /* Loading Overlay & Logs */
+        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); color: white; z-index: 9999; justify-content: center; align-items: center; flex-direction: column; gap: 15px; }
         .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid white; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #logContainer { width: 80%; max-width: 600px; height: 200px; background: var(--log-bg); color: var(--log-text); font-family: monospace; font-size: 12px; padding: 10px; overflow-y: auto; border-radius: 4px; border: 1px solid #444; text-align: left; }
+        .log-info { color: #00ff00; }
+        .log-warn { color: #ffff00; }
+        .log-error { color: #ff0000; }
     </style>
 </head>
 <body>
@@ -107,6 +115,7 @@
         <div class="toolbar-group">
             <button id="addTextBtn"><i class="fas fa-font"></i> Add Text</button>
             <label class="btn"><i class="fas fa-image"></i> Add Image<input type="file" id="imageInput" accept="image/*"></label>
+            <button id="replaceAreaBtn" title="Draw a box over an existing image to replace it"><i class="fas fa-object-ungroup"></i> Replace Area</button>
         </div>
         <div class="toolbar-group">
             <button id="zoomOutBtn"><i class="fas fa-search-minus"></i></button>
@@ -129,7 +138,8 @@
         <!-- Loading Overlay -->
         <div id="loadingOverlay">
             <div class="spinner"></div>
-            <div id="loadingText">Processing...</div>
+            <div id="loadingText" style="font-size: 20px; font-weight: bold;">Processing...</div>
+            <div id="logContainer"></div>
         </div>
 
         <!-- Left Sidebar (Pages) -->
@@ -198,6 +208,27 @@
     </div>
 
     <script>
+        // --- Verbose Logging System ---
+        function logVerbose(msg, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            entry.className = `log-${type}`;
+            entry.innerText = `[${time}] ${msg}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            if (type === 'error') console.error(msg);
+            else if (type === 'warn') console.warn(msg);
+            else console.log(msg);
+        }
+
+        function showLoading(show, text = "Processing...") {
+            document.getElementById('loadingText').innerText = text;
+            document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+            if(show) logVerbose(`--- ${text} ---`);
+        }
+
         // --- Configuration & State ---
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         
@@ -207,8 +238,8 @@
         let pdfBytesOriginal = null;
         
         // State Management
-        let pageCanvases = {}; // Store fabric JSON state per page (excluding background)
-        let pageHistories = {}; // { pageNum: { history:[], index: -1 } }
+        let pageCanvases = {}; 
+        let pageHistories = {}; 
         let isHistoryAction = false;
 
         // Dimensions
@@ -220,25 +251,33 @@
         let snapEnabled = true;
         let targetSnapMode = false;
         let targetElement = null;
+        let isReplacingArea = false;
+        let replaceRect = null;
+        let replaceStartX = 0, replaceStartY = 0;
         const GRID_SIZE = 20;
 
         const wrapper = document.getElementById('canvasWrapper');
 
         // --- Initialization ---
         function init() {
-            canvas = new fabric.Canvas('pdfCanvas', {
-                preserveObjectStacking: true,
-                selection: true
-            });
+            try {
+                logVerbose("Initializing Fabric.js canvas...");
+                canvas = new fabric.Canvas('pdfCanvas', {
+                    preserveObjectStacking: true,
+                    selection: true
+                });
 
-            // Set initial canvas DOM size to match wrapper
-            canvas.setWidth(wrapper.clientWidth);
-            canvas.setHeight(wrapper.clientHeight);
+                canvas.setWidth(wrapper.clientWidth || 800);
+                canvas.setHeight(wrapper.clientHeight || 600);
 
-            setupEventListeners();
-            setupKeyboardShortcuts();
-            setupCanvasEvents();
-            loadAutoSave();
+                setupEventListeners();
+                setupKeyboardShortcuts();
+                setupCanvasEvents();
+                loadAutoSave();
+                logVerbose("Initialization complete. Ready for PDF upload.");
+            } catch (e) {
+                logVerbose(`Initialization failed: ${e.message}`, "error");
+            }
 
             window.addEventListener('resize', () => {
                 if (pdfDoc) {
@@ -249,31 +288,36 @@
             });
         }
 
-        function showLoading(show, text = "Processing...") {
-            document.getElementById('loadingText').innerText = text;
-            document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
-        }
-
         // --- PDF Loading & Rendering ---
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             showLoading(true, "Loading PDF...");
-            const arrayBuffer = await file.arrayBuffer();
-            pdfBytesOriginal = arrayBuffer;
-            
-            pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            document.getElementById('exportBtn').disabled = false;
-            
-            document.getElementById('thumbnailsContainer').innerHTML = '';
-            
-            await renderThumbnails();
-            await loadPage(1);
-            showLoading(false);
+            try {
+                logVerbose(`Reading file: ${file.name} (${file.size} bytes)`);
+                const arrayBuffer = await file.arrayBuffer();
+                pdfBytesOriginal = arrayBuffer;
+                
+                logVerbose("Parsing PDF structure with pdf.js...");
+                pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                logVerbose(`PDF loaded successfully. Pages: ${pdfDoc.numPages}`);
+                
+                document.getElementById('exportBtn').disabled = false;
+                document.getElementById('thumbnailsContainer').innerHTML = '';
+                
+                await renderThumbnails();
+                await loadPage(1);
+            } catch (error) {
+                logVerbose(`Failed to load PDF: ${error.message}`, "error");
+                alert("Failed to load PDF. Check logs.");
+            } finally {
+                showLoading(false);
+            }
         });
 
         async function renderThumbnails() {
+            logVerbose("Generating sidebar thumbnails...");
             const container = document.getElementById('thumbnailsContainer');
             for (let i = 1; i <= pdfDoc.numPages; i++) {
                 const page = await pdfDoc.getPage(i);
@@ -299,66 +343,71 @@
                 thumbWrapper.appendChild(label);
                 container.appendChild(thumbWrapper);
             }
+            logVerbose("Thumbnails generated.");
         }
 
         async function loadPage(pageNum) {
             showLoading(true, `Loading Page ${pageNum}...`);
-            
-            // Save current page state before switching
-            if (pdfDoc && canvas.getObjects().length > 0) {
-                pageCanvases[currentPageNum] = getCanvasState();
-            }
-
-            currentPageNum = pageNum;
-            
-            // Update active thumbnail
-            document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
-            const activeThumb = document.getElementById(`thumb-${pageNum}`);
-            if(activeThumb) activeThumb.classList.add('active');
-
-            const page = await pdfDoc.getPage(pageNum);
-            
-            // 1x scale ensures Fabric's internal coordinate system perfectly matches the PDF points
-            const unscaledViewport = page.getViewport({ scale: 1.0 });
-            currentPdfPageWidth = unscaledViewport.width;
-            currentPdfPageHeight = unscaledViewport.height;
-
-            // Render at 2x scale for visual crispness
-            const renderScale = 2.0;
-            const renderViewport = page.getViewport({ scale: renderScale });
-
-            const tempCanvas = document.createElement('canvas');
-            const ctx = tempCanvas.getContext('2d');
-            tempCanvas.width = renderViewport.width;
-            tempCanvas.height = renderViewport.height;
-
-            await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
-
-            // Reset canvas DOM size to wrapper
-            canvas.setWidth(wrapper.clientWidth);
-            canvas.setHeight(wrapper.clientHeight);
-            canvas.clear();
-
-            const bgImage = new fabric.Image(tempCanvas);
-            bgImage.scale(1 / renderScale); // Scale down to match the 1:1 coordinate system
-
-            canvas.setBackgroundImage(bgImage, () => {
-                if (pageCanvases[pageNum]) {
-                    canvas.loadFromJSON(pageCanvases[pageNum], () => {
-                        // loadFromJSON clears background, so re-apply it
-                        canvas.setBackgroundImage(bgImage, () => {
-                            canvas.renderAll();
-                            if (!pageHistories[pageNum]) saveHistory();
-                            fitToScreen();
-                            showLoading(false);
-                        });
-                    });
-                } else {
-                    if (!pageHistories[pageNum]) saveHistory();
-                    fitToScreen();
-                    showLoading(false);
+            try {
+                if (pdfDoc && canvas.getObjects().length > 0) {
+                    logVerbose(`Saving state for page ${currentPageNum} before switching.`);
+                    pageCanvases[currentPageNum] = getCanvasState();
                 }
-            });
+
+                currentPageNum = pageNum;
+                
+                document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
+                const activeThumb = document.getElementById(`thumb-${pageNum}`);
+                if(activeThumb) activeThumb.classList.add('active');
+
+                logVerbose(`Fetching page ${pageNum} data...`);
+                const page = await pdfDoc.getPage(pageNum);
+                
+                const unscaledViewport = page.getViewport({ scale: 1.0 });
+                currentPdfPageWidth = unscaledViewport.width;
+                currentPdfPageHeight = unscaledViewport.height;
+
+                // Smart Rendering: Render UI at 1.5x for speed/clarity. Export uses original vector.
+                const renderScale = 1.5; 
+                const renderViewport = page.getViewport({ scale: renderScale });
+
+                const tempCanvas = document.createElement('canvas');
+                const ctx = tempCanvas.getContext('2d');
+                tempCanvas.width = renderViewport.width;
+                tempCanvas.height = renderViewport.height;
+
+                logVerbose("Rendering PDF background to canvas...");
+                await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+
+                canvas.setWidth(wrapper.clientWidth || 800);
+                canvas.setHeight(wrapper.clientHeight || 600);
+                canvas.clear();
+
+                const bgImage = new fabric.Image(tempCanvas);
+                bgImage.scale(1 / renderScale); // Scale down to match 1:1 coordinate system
+
+                canvas.setBackgroundImage(bgImage, () => {
+                    logVerbose("Background applied.");
+                    if (pageCanvases[pageNum]) {
+                        logVerbose("Restoring previous edits for this page...");
+                        canvas.loadFromJSON(pageCanvases[pageNum], () => {
+                            canvas.setBackgroundImage(bgImage, () => {
+                                canvas.renderAll();
+                                if (!pageHistories[pageNum]) saveHistory();
+                                fitToScreen();
+                                showLoading(false);
+                            });
+                        });
+                    } else {
+                        if (!pageHistories[pageNum]) saveHistory();
+                        fitToScreen();
+                        showLoading(false);
+                    }
+                });
+            } catch (error) {
+                logVerbose(`Error loading page ${pageNum}: ${error.message}`, "error");
+                showLoading(false);
+            }
         }
 
         // --- Canvas Navigation (Zoom & Pan) ---
@@ -389,47 +438,16 @@
             }
         });
 
-        canvas.on('mouse:down', function(opt) {
-            if (isPanning) {
-                this.isDragging = true;
-                this.selection = false;
-                this.lastPosX = opt.e.clientX;
-                this.lastPosY = opt.e.clientY;
-            } else if (targetSnapMode && opt.target) {
-                targetElement = opt.target;
-                alert('Target element selected for snapping.');
-                document.getElementById('targetSnapBtn').classList.remove('active');
-                targetSnapMode = false;
-            }
-        });
-
-        canvas.on('mouse:move', function(opt) {
-            if (this.isDragging) {
-                var e = opt.e;
-                var vpt = this.viewportTransform;
-                vpt[4] += e.clientX - this.lastPosX;
-                vpt[5] += e.clientY - this.lastPosY;
-                this.requestRenderAll();
-                this.lastPosX = e.clientX;
-                this.lastPosY = e.clientY;
-                updateGrid();
-            }
-        });
-
-        canvas.on('mouse:up', function(opt) {
-            this.isDragging = false;
-            this.selection = true;
-        });
-
         function fitToScreen() {
             if (!currentPdfPageWidth || !currentPdfPageHeight) return;
             const padding = 40;
-            const cw = wrapper.clientWidth;
-            const ch = wrapper.clientHeight;
+            let cw = wrapper.clientWidth;
+            let ch = wrapper.clientHeight;
             
             if (cw === 0 || ch === 0) {
-                setTimeout(fitToScreen, 50);
-                return;
+                logVerbose("Warning: Wrapper dimensions are 0. Using fallback dimensions to prevent loop.", "warn");
+                cw = window.innerWidth * 0.8;
+                ch = window.innerHeight * 0.8;
             }
 
             const scaleX = (cw - padding) / currentPdfPageWidth;
@@ -463,22 +481,129 @@
 
         // --- Element Manipulation & Snapping ---
         function setupCanvasEvents() {
+            canvas.on('mouse:down', function(opt) {
+                if (isPanning) {
+                    this.isDragging = true;
+                    this.selection = false;
+                    this.lastPosX = opt.e.clientX;
+                    this.lastPosY = opt.e.clientY;
+                } else if (targetSnapMode && opt.target) {
+                    targetElement = opt.target;
+                    logVerbose("Target element selected for snapping.");
+                    document.getElementById('targetSnapBtn').classList.remove('active');
+                    targetSnapMode = false;
+                } else if (isReplacingArea) {
+                    let pointer = canvas.getPointer(opt.e);
+                    replaceStartX = pointer.x;
+                    replaceStartY = pointer.y;
+                    replaceRect = new fabric.Rect({
+                        left: replaceStartX, top: replaceStartY, width: 0, height: 0,
+                        fill: 'rgba(255, 255, 255, 0.5)', stroke: '#ff0000', strokeDashArray:[5, 5],
+                        selectable: false, evented: false
+                    });
+                    canvas.add(replaceRect);
+                }
+            });
+
+            canvas.on('mouse:move', function(opt) {
+                if (this.isDragging) {
+                    var e = opt.e;
+                    var vpt = this.viewportTransform;
+                    vpt[4] += e.clientX - this.lastPosX;
+                    vpt[5] += e.clientY - this.lastPosY;
+                    this.requestRenderAll();
+                    this.lastPosX = e.clientX;
+                    this.lastPosY = e.clientY;
+                    updateGrid();
+                } else if (isReplacingArea && replaceRect) {
+                    let pointer = canvas.getPointer(opt.e);
+                    replaceRect.set({
+                        width: Math.abs(pointer.x - replaceStartX),
+                        height: Math.abs(pointer.y - replaceStartY),
+                        left: Math.min(pointer.x, replaceStartX),
+                        top: Math.min(pointer.y, replaceStartY)
+                    });
+                    canvas.renderAll();
+                }
+            });
+
+            canvas.on('mouse:up', function(opt) {
+                this.isDragging = false;
+                this.selection = true;
+
+                if (isReplacingArea && replaceRect) {
+                    isReplacingArea = false;
+                    canvas.defaultCursor = 'default';
+                    document.getElementById('replaceAreaBtn').classList.remove('active');
+                    
+                    if (replaceRect.width < 10 || replaceRect.height < 10) {
+                        canvas.remove(replaceRect);
+                        logVerbose("Replace area too small, cancelled.", "warn");
+                        return;
+                    }
+
+                    logVerbose("Area selected. Prompting for new image...");
+                    
+                    // Prompt for image
+                    let input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = (e) => {
+                        let file = e.target.files[0];
+                        let reader = new FileReader();
+                        reader.onload = (f) => {
+                            fabric.Image.fromURL(f.target.result, (img) => {
+                                // Create solid white mask to hide PDF background
+                                let mask = new fabric.Rect({
+                                    left: replaceRect.left, top: replaceRect.top,
+                                    width: replaceRect.width, height: replaceRect.height,
+                                    fill: '#ffffff', strokeWidth: 0
+                                });
+                                
+                                // Scale new image to fit the drawn box
+                                img.scaleToWidth(replaceRect.width);
+                                img.scaleToHeight(replaceRect.height);
+                                img.set({ left: replaceRect.left, top: replaceRect.top });
+                                
+                                // Group them so they move/scale together
+                                let group = new fabric.Group([mask, img], {
+                                    left: replaceRect.left, top: replaceRect.top
+                                });
+                                
+                                canvas.remove(replaceRect);
+                                canvas.add(group);
+                                canvas.setActiveObject(group);
+                                saveHistory();
+                                saveToLocal();
+                                logVerbose("Image replaced and grouped with mask successfully.");
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                    };
+                    
+                    // Handle cancel
+                    window.addEventListener('focus', function handler() {
+                        setTimeout(() => {
+                            if (replaceRect && canvas.contains(replaceRect)) {
+                                canvas.remove(replaceRect);
+                                logVerbose("Image replacement cancelled.");
+                            }
+                        }, 500);
+                        window.removeEventListener('focus', handler);
+                    });
+                    
+                    input.click();
+                }
+            });
+
             canvas.on('object:moving', function(options) {
                 const obj = options.target;
-                
                 if (targetElement && targetElement !== obj) {
-                    // Target Snapping
                     const targetCenter = targetElement.getCenterPoint();
                     const objCenter = obj.getCenterPoint();
-                    
-                    if (Math.abs(objCenter.x - targetCenter.x) < 20) {
-                        obj.set({ left: targetCenter.x - (obj.width * obj.scaleX)/2 });
-                    }
-                    if (Math.abs(objCenter.y - targetCenter.y) < 20) {
-                        obj.set({ top: targetCenter.y - (obj.height * obj.scaleY)/2 });
-                    }
+                    if (Math.abs(objCenter.x - targetCenter.x) < 20) obj.set({ left: targetCenter.x - (obj.width * obj.scaleX)/2 });
+                    if (Math.abs(objCenter.y - targetCenter.y) < 20) obj.set({ top: targetCenter.y - (obj.height * obj.scaleY)/2 });
                 } else if (snapEnabled) {
-                    // Grid Snapping
                     obj.set({
                         left: Math.round(obj.left / GRID_SIZE) * GRID_SIZE,
                         top: Math.round(obj.top / GRID_SIZE) * GRID_SIZE
@@ -488,11 +613,8 @@
 
             canvas.on('selection:created', updatePropertiesPanel);
             canvas.on('selection:updated', updatePropertiesPanel);
-            canvas.on('selection:cleared', () => {
-                document.getElementById('textProperties').style.display = 'none';
-            });
+            canvas.on('selection:cleared', () => { document.getElementById('textProperties').style.display = 'none'; });
 
-            // History triggers
             canvas.on('object:modified', () => { saveHistory(); saveToLocal(); });
             canvas.on('object:added', () => { if(!isHistoryAction) { saveHistory(); saveToLocal(); }});
             canvas.on('object:removed', () => { if(!isHistoryAction) { saveHistory(); saveToLocal(); }});
@@ -500,17 +622,12 @@
 
         // --- UI Event Listeners ---
         function setupEventListeners() {
-            // Theme Toggle
             document.getElementById('themeToggleBtn').onclick = () => {
                 const body = document.body;
-                if (body.getAttribute('data-theme') === 'light') {
-                    body.removeAttribute('data-theme');
-                } else {
-                    body.setAttribute('data-theme', 'light');
-                }
+                if (body.getAttribute('data-theme') === 'light') body.removeAttribute('data-theme');
+                else body.setAttribute('data-theme', 'light');
             };
 
-            // Grid Toggle
             document.getElementById('gridToggleBtn').onclick = (e) => {
                 const overlay = document.getElementById('gridOverlay');
                 overlay.classList.toggle('active');
@@ -518,7 +635,6 @@
                 updateGrid();
             };
 
-            // Snap Toggles
             document.getElementById('snapToggleBtn').onclick = (e) => {
                 snapEnabled = !snapEnabled;
                 e.target.classList.toggle('active');
@@ -527,10 +643,23 @@
             document.getElementById('targetSnapBtn').onclick = (e) => {
                 targetSnapMode = !targetSnapMode;
                 e.target.classList.toggle('active');
-                if(targetSnapMode) alert('Click an element to set it as the snap target.');
+                if(targetSnapMode) logVerbose("Target Snap Mode: Click an element to set it as the snap target.");
             };
 
-            // Add Elements
+            document.getElementById('replaceAreaBtn').onclick = (e) => {
+                if(!pdfDoc) return alert("Please open a PDF first.");
+                isReplacingArea = !isReplacingArea;
+                e.target.classList.toggle('active');
+                if(isReplacingArea) {
+                    canvas.defaultCursor = 'crosshair';
+                    canvas.discardActiveObject();
+                    canvas.requestRenderAll();
+                    logVerbose("Replace Area Mode: Draw a rectangle over the image you want to replace.");
+                } else {
+                    canvas.defaultCursor = 'default';
+                }
+            };
+
             document.getElementById('addTextBtn').onclick = () => {
                 if(!pdfDoc) return alert("Please open a PDF first.");
                 const center = canvas.getVpCenter();
@@ -539,8 +668,7 @@
                 });
                 canvas.add(text);
                 canvas.setActiveObject(text);
-                saveHistory();
-                saveToLocal();
+                logVerbose("Added new text element.");
             };
 
             document.getElementById('imageInput').addEventListener('change', function(e) {
@@ -549,38 +677,27 @@
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = function(f) {
-                    const data = f.target.result;
-                    fabric.Image.fromURL(data, function(img) {
+                    fabric.Image.fromURL(f.target.result, function(img) {
                         const center = canvas.getVpCenter();
                         img.scaleToWidth(200);
                         img.set({ left: center.x - 100, top: center.y - (img.getScaledHeight()/2) });
                         canvas.add(img);
                         canvas.setActiveObject(img);
-                        saveHistory();
-                        saveToLocal();
+                        logVerbose("Added new image element.");
                     });
                 };
                 reader.readAsDataURL(file);
-                e.target.value = ''; // Reset input
+                e.target.value = ''; 
             });
 
-            // Alignment
-            document.getElementById('alignCenterH').onclick = () => {
-                const obj = canvas.getActiveObject();
-                if(obj) { obj.centerH(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }
-            };
-            document.getElementById('alignCenterV').onclick = () => {
-                const obj = canvas.getActiveObject();
-                if(obj) { obj.centerV(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }
-            };
+            document.getElementById('alignCenterH').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { obj.centerH(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }};
+            document.getElementById('alignCenterV').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { obj.centerV(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }};
 
-            // Z-Index
             document.getElementById('bringFrontBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringToFront(obj); saveHistory(); saveToLocal(); }};
             document.getElementById('bringForwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringForward(obj); saveHistory(); saveToLocal(); }};
             document.getElementById('sendBackwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendBackwards(obj); saveHistory(); saveToLocal(); }};
             document.getElementById('sendBackBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendToBack(obj); saveHistory(); saveToLocal(); }};
 
-            // Locking & Deleting
             document.getElementById('lockBtn').onclick = () => {
                 const obj = canvas.getActiveObject();
                 if(obj) {
@@ -591,11 +708,11 @@
                     obj.lockScalingY = !obj.lockScalingY;
                     obj.hasControls = !obj.lockMovementX;
                     canvas.renderAll();
+                    logVerbose(`Element ${obj.lockMovementX ? 'locked' : 'unlocked'}.`);
                 }
             };
             document.getElementById('deleteBtn').onclick = deleteSelected;
 
-            // Text Formatting
             document.getElementById('fontFamily').onchange = (e) => updateTextProp('fontFamily', e.target.value);
             document.getElementById('fontSize').onchange = (e) => updateTextProp('fontSize', parseInt(e.target.value));
             document.getElementById('textColor').onchange = (e) => updateTextProp('fill', e.target.value);
@@ -604,11 +721,8 @@
             document.getElementById('textAlignRight').onclick = () => updateTextProp('textAlign', 'right');
             document.getElementById('textAlignJustify').onclick = () => updateTextProp('textAlign', 'justify');
 
-            // Undo/Redo
             document.getElementById('undoBtn').onclick = undo;
             document.getElementById('redoBtn').onclick = redo;
-
-            // Export
             document.getElementById('exportBtn').onclick = exportPDF;
         }
 
@@ -618,7 +732,6 @@
                 document.getElementById('textProperties').style.display = 'none';
                 return;
             }
-
             if (obj.type === 'i-text' || obj.type === 'text') {
                 document.getElementById('textProperties').style.display = 'block';
                 document.getElementById('fontFamily').value = obj.fontFamily || 'Helvetica';
@@ -646,6 +759,7 @@
                 activeObjects.forEach(function(object) {
                     canvas.remove(object);
                 });
+                logVerbose(`Deleted ${activeObjects.length} element(s).`);
                 saveHistory();
                 saveToLocal();
             }
@@ -665,8 +779,14 @@
                 } else if (e.key === 'Escape') {
                     canvas.discardActiveObject();
                     canvas.renderAll();
+                    if(isReplacingArea) {
+                        isReplacingArea = false;
+                        canvas.defaultCursor = 'default';
+                        document.getElementById('replaceAreaBtn').classList.remove('active');
+                        if(replaceRect) canvas.remove(replaceRect);
+                    }
                 } else if (e.ctrlKey && e.key === 'c') {
-                    if(obj) obj.clone((cloned) => { window.clipboard = cloned; });
+                    if(obj) obj.clone((cloned) => { window.clipboard = cloned; logVerbose("Element copied."); });
                 } else if (e.ctrlKey && e.key === 'v') {
                     if(window.clipboard) {
                         window.clipboard.clone((clonedObj) => {
@@ -682,6 +802,7 @@
                             window.clipboard.top += 10; window.clipboard.left += 10;
                             canvas.setActiveObject(clonedObj);
                             canvas.requestRenderAll();
+                            logVerbose("Element pasted.");
                             saveHistory();
                             saveToLocal();
                         });
@@ -712,7 +833,7 @@
         // --- Undo / Redo Stack (Per Page) ---
         function getCanvasState() {
             const json = canvas.toJSON();
-            delete json.backgroundImage; // Do not serialize the heavy background image
+            delete json.backgroundImage; 
             return json;
         }
 
@@ -729,7 +850,7 @@
         }
 
         function loadState(state) {
-            const bgImage = canvas.backgroundImage; // Preserve background
+            const bgImage = canvas.backgroundImage; 
             canvas.loadFromJSON(state, () => {
                 canvas.setBackgroundImage(bgImage, () => {
                     canvas.renderAll();
@@ -745,6 +866,7 @@
                 isHistoryAction = true;
                 ph.index--;
                 loadState(ph.history[ph.index]);
+                logVerbose("Undo performed.");
             }
         }
 
@@ -754,6 +876,7 @@
                 isHistoryAction = true;
                 ph.index++;
                 loadState(ph.history[ph.index]);
+                logVerbose("Redo performed.");
             }
         }
 
@@ -770,7 +893,7 @@
             if (draft) {
                 try {
                     pageCanvases = JSON.parse(draft);
-                    console.log("Draft loaded from localStorage. Upload the original PDF to apply.");
+                    logVerbose("Draft loaded from localStorage. Upload the original PDF to apply.");
                 } catch (e) {
                     console.error("Failed to parse draft", e);
                 }
@@ -785,31 +908,64 @@
             document.getElementById('exportBtn').innerText = "Exporting...";
             
             try {
-                // Save current page state
+                logVerbose("Saving current page state...");
                 pageCanvases[currentPageNum] = getCanvasState();
 
+                logVerbose("Loading original PDF vector data into pdf-lib...");
                 const pdfDocLib = await PDFLib.PDFDocument.load(pdfBytesOriginal);
                 const pages = pdfDocLib.getPages();
 
                 for (let i = 1; i <= pdfDoc.numPages; i++) {
                     const pageData = pageCanvases[i];
-                    if (!pageData) continue;
+                    if (!pageData || pageData.objects.length === 0) continue;
 
+                    logVerbose(`Processing edits for Page ${i}...`);
                     const pdfPage = pages[i - 1];
                     const { width, height } = pdfPage.getSize();
                     
-                    // Create a temporary fabric canvas to parse the JSON without rendering to DOM
+                    // Create a temporary canvas to parse JSON and ungroup elements for absolute coordinates
                     const tempCanvas = new fabric.StaticCanvas(null, { width: width, height: height });
                     await new Promise(resolve => tempCanvas.loadFromJSON(pageData, resolve));
                     
+                    // Ungroup all groups to get absolute coordinates for export (Crucial for Replace Image tool)
                     const objects = tempCanvas.getObjects();
+                    let flatObjects =[];
                     
-                    for (const obj of objects) {
+                    objects.forEach(obj => {
+                        if (obj.type === 'group') {
+                            const groupObjects = obj.getObjects();
+                            const groupMatrix = obj.calcTransformMatrix();
+                            groupObjects.forEach(gObj => {
+                                // Calculate absolute position of grouped object
+                                const matrix = fabric.util.multiplyTransformMatrices(groupMatrix, gObj.calcTransformMatrix());
+                                const options = fabric.util.qrDecompose(matrix);
+                                const absObj = fabric.util.object.clone(gObj);
+                                absObj.set({
+                                    left: options.translateX, top: options.translateY,
+                                    scaleX: options.scaleX, scaleY: options.scaleY,
+                                    angle: options.angle
+                                });
+                                flatObjects.push(absObj);
+                            });
+                        } else {
+                            flatObjects.push(obj);
+                        }
+                    });
+
+                    for (const obj of flatObjects) {
                         // PDF-lib uses bottom-left origin, Fabric uses top-left
                         const yPos = height - obj.top - (obj.height * obj.scaleY);
 
-                        if (obj.type === 'i-text' || obj.type === 'text') {
-                            // Map standard fonts
+                        if (obj.type === 'rect') {
+                            const rgb = hexToRgb(obj.fill || '#ffffff');
+                            pdfPage.drawRectangle({
+                                x: obj.left,
+                                y: yPos,
+                                width: obj.width * obj.scaleX,
+                                height: obj.height * obj.scaleY,
+                                color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255)
+                            });
+                        } else if (obj.type === 'i-text' || obj.type === 'text') {
                             let font;
                             if(obj.fontFamily === 'Times New Roman') font = await pdfDocLib.embedFont(PDFLib.StandardFonts.TimesRoman);
                             else if(obj.fontFamily === 'Courier') font = await pdfDocLib.embedFont(PDFLib.StandardFonts.Courier);
@@ -820,18 +976,14 @@
                             const lineHeight = obj.fontSize * obj.lineHeight;
                             
                             lines.forEach((line, index) => {
-                                // Calculate alignment offset
                                 let lineWidth = font.widthOfTextAtSize(line, obj.fontSize);
                                 let offsetX = 0;
-                                if (obj.textAlign === 'center') {
-                                    offsetX = (obj.width - lineWidth) / 2;
-                                } else if (obj.textAlign === 'right') {
-                                    offsetX = obj.width - lineWidth;
-                                }
+                                if (obj.textAlign === 'center') offsetX = (obj.width - lineWidth) / 2;
+                                else if (obj.textAlign === 'right') offsetX = obj.width - lineWidth;
                                 
                                 pdfPage.drawText(line, {
                                     x: obj.left + offsetX,
-                                    y: height - obj.top - obj.fontSize - (index * lineHeight), // Adjust for baseline and multi-line
+                                    y: height - obj.top - obj.fontSize - (index * lineHeight),
                                     size: obj.fontSize,
                                     font: font,
                                     color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255)
@@ -840,11 +992,8 @@
                         } else if (obj.type === 'image') {
                             const imgData = obj.getSrc();
                             let embeddedImage;
-                            if (imgData.includes('image/png')) {
-                                embeddedImage = await pdfDocLib.embedPng(imgData);
-                            } else if (imgData.includes('image/jpeg')) {
-                                embeddedImage = await pdfDocLib.embedJpg(imgData);
-                            }
+                            if (imgData.includes('image/png')) embeddedImage = await pdfDocLib.embedPng(imgData);
+                            else if (imgData.includes('image/jpeg')) embeddedImage = await pdfDocLib.embedJpg(imgData);
                             
                             if (embeddedImage) {
                                 pdfPage.drawImage(embeddedImage, {
@@ -858,19 +1007,21 @@
                     }
                 }
 
+                logVerbose("Compiling final PDF bytes...");
                 const pdfBytes = await pdfDocLib.save();
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = 'edited_document.pdf';
                 link.click();
+                logVerbose("Export successful!");
 
             } catch (error) {
-                console.error("Export failed:", error);
-                alert("An error occurred during export.");
+                logVerbose(`Export failed: ${error.message}`, "error");
+                alert("An error occurred during export. Check logs.");
             } finally {
                 document.getElementById('exportBtn').innerHTML = '<i class="fas fa-download"></i> Export';
-                showLoading(false);
+                setTimeout(() => showLoading(false), 1500); // Keep logs visible briefly
             }
         }
 
