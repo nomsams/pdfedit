@@ -25,9 +25,7 @@
             --canvas-bg: #2c2c2c;
             --log-bg: #000000;
             --log-text: #00ff00;
-        }
-
-        [data-theme="light"] {
+        }[data-theme="light"] {
             /* Light Theme */
             --bg-color: #f5f5f5;
             --panel-bg: #ffffff;
@@ -88,10 +86,10 @@
 
         /* Utilities */
         .icon-btn-group { display: flex; gap: 2px; }
-        .icon-btn-group button { padding: 6px 8px; }
+        .icon-btn-group button { padding: 6px 8px; flex: 1; justify-content: center; }
 
         /* Loading Overlay & Logs */
-        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); color: white; z-index: 9999; justify-content: center; align-items: center; flex-direction: column; gap: 15px; }
+        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); color: white; z-index: 9999; justify-content: center; align-items: center; flex-direction: column; gap: 15px; }
         .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid white; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         #logContainer { width: 80%; max-width: 600px; height: 200px; background: var(--log-bg); color: var(--log-text); font-family: monospace; font-size: 12px; padding: 10px; overflow-y: auto; border-radius: 4px; border: 1px solid #444; text-align: left; }
@@ -177,8 +175,8 @@
                 <h3>Text Formatting</h3>
                 <div class="prop-row">
                     <select id="fontFamily">
-                        <option value="Helvetica">Helvetica (Detected)</option>
-                        <option value="Times New Roman">Times New Roman (Detected)</option>
+                        <option value="Helvetica">Helvetica</option>
+                        <option value="Times New Roman">Times New Roman</option>
                         <option value="Courier">Courier</option>
                         <option value="Arial">Arial</option>
                     </select>
@@ -223,10 +221,26 @@
             else console.log(msg);
         }
 
+        let loadingTimeout;
         function showLoading(show, text = "Processing...") {
+            const overlay = document.getElementById('loadingOverlay');
             document.getElementById('loadingText').innerText = text;
-            document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
-            if(show) logVerbose(`--- ${text} ---`);
+            
+            if (show) {
+                overlay.style.display = 'flex';
+                logVerbose(`--- ${text} ---`);
+                // Failsafe: Auto-hide loading screen after 15 seconds to prevent permanent lock
+                clearTimeout(loadingTimeout);
+                loadingTimeout = setTimeout(() => {
+                    if (overlay.style.display === 'flex') {
+                        logVerbose("Loading timeout reached. Forcing overlay to close.", "warn");
+                        overlay.style.display = 'none';
+                    }
+                }, 15000);
+            } else {
+                clearTimeout(loadingTimeout);
+                overlay.style.display = 'none';
+            }
         }
 
         // --- Configuration & State ---
@@ -267,8 +281,22 @@
                     selection: true
                 });
 
+                // Initial sizing
                 canvas.setWidth(wrapper.clientWidth || 800);
                 canvas.setHeight(wrapper.clientHeight || 600);
+
+                // Superior Resize Handling using ResizeObserver
+                const resizeObserver = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        const { width, height } = entry.contentRect;
+                        if (width > 0 && height > 0 && pdfDoc) {
+                            canvas.setWidth(width);
+                            canvas.setHeight(height);
+                            fitToScreen();
+                        }
+                    }
+                });
+                resizeObserver.observe(wrapper);
 
                 setupEventListeners();
                 setupKeyboardShortcuts();
@@ -278,14 +306,6 @@
             } catch (e) {
                 logVerbose(`Initialization failed: ${e.message}`, "error");
             }
-
-            window.addEventListener('resize', () => {
-                if (pdfDoc) {
-                    canvas.setWidth(wrapper.clientWidth);
-                    canvas.setHeight(wrapper.clientHeight);
-                    fitToScreen();
-                }
-            });
         }
 
         // --- PDF Loading & Rendering ---
@@ -311,7 +331,6 @@
             } catch (error) {
                 logVerbose(`Failed to load PDF: ${error.message}`, "error");
                 alert("Failed to load PDF. Check logs.");
-            } finally {
                 showLoading(false);
             }
         });
@@ -367,8 +386,8 @@
                 currentPdfPageWidth = unscaledViewport.width;
                 currentPdfPageHeight = unscaledViewport.height;
 
-                // Smart Rendering: Render UI at 1.5x for speed/clarity. Export uses original vector.
-                const renderScale = 1.5; 
+                // Render at 2.0x for crispness
+                const renderScale = 2.0; 
                 const renderViewport = page.getViewport({ scale: renderScale });
 
                 const tempCanvas = document.createElement('canvas');
@@ -376,33 +395,39 @@
                 tempCanvas.width = renderViewport.width;
                 tempCanvas.height = renderViewport.height;
 
-                logVerbose("Rendering PDF background to canvas...");
+                logVerbose("Rendering PDF background to temporary canvas...");
                 await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
 
-                canvas.setWidth(wrapper.clientWidth || 800);
-                canvas.setHeight(wrapper.clientHeight || 600);
+                // Bulletproof Fabric Image Loading via DataURL
+                logVerbose("Converting background to Data URL...");
+                const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+
                 canvas.clear();
 
-                const bgImage = new fabric.Image(tempCanvas);
-                bgImage.scale(1 / renderScale); // Scale down to match 1:1 coordinate system
-
-                canvas.setBackgroundImage(bgImage, () => {
-                    logVerbose("Background applied.");
-                    if (pageCanvases[pageNum]) {
-                        logVerbose("Restoring previous edits for this page...");
-                        canvas.loadFromJSON(pageCanvases[pageNum], () => {
-                            canvas.setBackgroundImage(bgImage, () => {
-                                canvas.renderAll();
-                                if (!pageHistories[pageNum]) saveHistory();
-                                fitToScreen();
-                                showLoading(false);
-                            });
-                        });
-                    } else {
-                        if (!pageHistories[pageNum]) saveHistory();
-                        fitToScreen();
-                        showLoading(false);
+                fabric.Image.fromURL(dataUrl, (bgImage) => {
+                    if (!bgImage) {
+                        throw new Error("Fabric failed to create image from Data URL.");
                     }
+                    bgImage.scale(1 / renderScale); // Scale down to match 1:1 coordinate system
+                    
+                    canvas.setBackgroundImage(bgImage, () => {
+                        logVerbose("Background applied successfully.");
+                        if (pageCanvases[pageNum]) {
+                            logVerbose("Restoring previous edits for this page...");
+                            canvas.loadFromJSON(pageCanvases[pageNum], () => {
+                                canvas.setBackgroundImage(bgImage, () => {
+                                    canvas.renderAll();
+                                    if (!pageHistories[pageNum]) saveHistory();
+                                    fitToScreen();
+                                    showLoading(false);
+                                });
+                            });
+                        } else {
+                            if (!pageHistories[pageNum]) saveHistory();
+                            fitToScreen();
+                            showLoading(false);
+                        }
+                    });
                 });
             } catch (error) {
                 logVerbose(`Error loading page ${pageNum}: ${error.message}`, "error");
@@ -440,16 +465,17 @@
 
         function fitToScreen() {
             if (!currentPdfPageWidth || !currentPdfPageHeight) return;
-            const padding = 40;
+            
             let cw = wrapper.clientWidth;
             let ch = wrapper.clientHeight;
             
+            // Prevent Infinity scale bug if wrapper is hidden or not painted yet
             if (cw === 0 || ch === 0) {
-                logVerbose("Warning: Wrapper dimensions are 0. Using fallback dimensions to prevent loop.", "warn");
-                cw = window.innerWidth * 0.8;
-                ch = window.innerHeight * 0.8;
+                logVerbose("Wrapper dimensions are 0. Waiting for ResizeObserver.", "warn");
+                return; 
             }
 
+            const padding = 40;
             const scaleX = (cw - padding) / currentPdfPageWidth;
             const scaleY = (ch - padding) / currentPdfPageHeight;
             const scale = Math.min(scaleX, scaleY);
@@ -544,7 +570,6 @@
 
                     logVerbose("Area selected. Prompting for new image...");
                     
-                    // Prompt for image
                     let input = document.createElement('input');
                     input.type = 'file';
                     input.accept = 'image/*';
@@ -581,7 +606,6 @@
                         reader.readAsDataURL(file);
                     };
                     
-                    // Handle cancel
                     window.addEventListener('focus', function handler() {
                         setTimeout(() => {
                             if (replaceRect && canvas.contains(replaceRect)) {
@@ -657,6 +681,7 @@
                     logVerbose("Replace Area Mode: Draw a rectangle over the image you want to replace.");
                 } else {
                     canvas.defaultCursor = 'default';
+                    if(replaceRect) canvas.remove(replaceRect);
                 }
             };
 
@@ -883,8 +908,12 @@
         // --- Local Auto-Save ---
         function saveToLocal() {
             if(pdfDoc) {
-                pageCanvases[currentPageNum] = getCanvasState();
-                localStorage.setItem('pdf_editor_draft', JSON.stringify(pageCanvases));
+                try {
+                    pageCanvases[currentPageNum] = getCanvasState();
+                    localStorage.setItem('pdf_editor_draft', JSON.stringify(pageCanvases));
+                } catch (e) {
+                    logVerbose("Failed to save draft to localStorage (Quota exceeded?).", "warn");
+                }
             }
         }
 
