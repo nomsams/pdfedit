@@ -43,7 +43,7 @@
         body { background-color: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
         /* Toolbar */
-        .toolbar { background-color: var(--toolbar-bg); padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; }
+        .toolbar { background-color: var(--toolbar-bg); padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; z-index: 100; }
         .toolbar-group { display: flex; gap: 5px; border-right: 1px solid var(--border-color); padding-right: 15px; align-items: center; }
         .toolbar-group:last-child { border-right: none; }
         
@@ -55,10 +55,10 @@
         input[type="file"] { display: none; }
 
         /* Main Layout */
-        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
 
         /* Sidebars */
-        .sidebar { width: 250px; background-color: var(--panel-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; }
+        .sidebar { width: 250px; background-color: var(--panel-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; z-index: 10; }
         .sidebar-right { border-right: none; border-left: 1px solid var(--border-color); padding: 15px; }
         
         .panel-section { margin-bottom: 20px; }
@@ -69,22 +69,27 @@
         select, input[type="number"], input[type="color"] { width: 100%; padding: 5px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; }
         
         /* Thumbnails */
-        .thumbnail { margin: 10px; border: 2px solid transparent; cursor: pointer; position: relative; }
+        .thumbnail { margin: 10px; border: 2px solid transparent; cursor: pointer; position: relative; transition: 0.2s; }
+        .thumbnail:hover { border-color: #888; }
         .thumbnail.active { border-color: var(--accent-color); }
         .thumbnail canvas { width: 100%; display: block; background: white; }
         .thumbnail-label { text-align: center; font-size: 12px; padding: 5px; }
 
         /* Canvas Area */
-        .canvas-wrapper { flex: 1; background-color: var(--canvas-bg); position: relative; overflow: hidden; display: flex; justify-content: center; align-items: center; outline: none; }
-        .canvas-container { box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .canvas-wrapper { flex: 1; background-color: var(--canvas-bg); position: relative; overflow: hidden; outline: none; }
         
         /* Grid Overlay */
-        .grid-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background-size: 20px 20px; background-image: linear-gradient(to right, rgba(128,128,128,0.2) 1px, transparent 1px), linear-gradient(to bottom, rgba(128,128,128,0.2) 1px, transparent 1px); display: none; }
+        .grid-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background-size: 20px 20px; background-image: linear-gradient(to right, rgba(128,128,128,0.2) 1px, transparent 1px), linear-gradient(to bottom, rgba(128,128,128,0.2) 1px, transparent 1px); display: none; z-index: 5; }
         .grid-overlay.active { display: block; }
 
         /* Utilities */
         .icon-btn-group { display: flex; gap: 2px; }
         .icon-btn-group button { padding: 6px 8px; }
+
+        /* Loading Overlay */
+        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); color: white; z-index: 9999; justify-content: center; align-items: center; font-size: 20px; flex-direction: column; gap: 15px; }
+        .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid white; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -105,7 +110,7 @@
         </div>
         <div class="toolbar-group">
             <button id="zoomOutBtn"><i class="fas fa-search-minus"></i></button>
-            <span id="zoomLevel" style="font-size: 14px; width: 40px; text-align: center;">100%</span>
+            <span id="zoomLevel" style="font-size: 14px; width: 45px; text-align: center;">100%</span>
             <button id="zoomInBtn"><i class="fas fa-search-plus"></i></button>
             <button id="fitScreenBtn"><i class="fas fa-expand"></i> Fit</button>
         </div>
@@ -121,9 +126,15 @@
 
     <!-- Main Content -->
     <div class="main-container">
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay">
+            <div class="spinner"></div>
+            <div id="loadingText">Processing...</div>
+        </div>
+
         <!-- Left Sidebar (Pages) -->
         <div class="sidebar" id="thumbnailsContainer">
-            <div style="padding: 10px; text-align: center; color: #888; font-size: 12px;">Pages will appear here</div>
+            <div style="padding: 15px; text-align: center; color: #888; font-size: 13px;">Upload a PDF to begin</div>
         </div>
 
         <!-- Canvas Area -->
@@ -194,12 +205,15 @@
         let currentPageNum = 1;
         let canvas;
         let pdfBytesOriginal = null;
-        let pageCanvases = {}; // Store fabric JSON state per page
         
-        // History (Undo/Redo)
-        let history =[];
-        let historyIndex = -1;
+        // State Management
+        let pageCanvases = {}; // Store fabric JSON state per page (excluding background)
+        let pageHistories = {}; // { pageNum: { history:[], index: -1 } }
         let isHistoryAction = false;
+
+        // Dimensions
+        let currentPdfPageWidth = 0;
+        let currentPdfPageHeight = 0;
 
         // Modes & Toggles
         let isPanning = false;
@@ -208,6 +222,8 @@
         let targetElement = null;
         const GRID_SIZE = 20;
 
+        const wrapper = document.getElementById('canvasWrapper');
+
         // --- Initialization ---
         function init() {
             canvas = new fabric.Canvas('pdfCanvas', {
@@ -215,10 +231,27 @@
                 selection: true
             });
 
+            // Set initial canvas DOM size to match wrapper
+            canvas.setWidth(wrapper.clientWidth);
+            canvas.setHeight(wrapper.clientHeight);
+
             setupEventListeners();
             setupKeyboardShortcuts();
             setupCanvasEvents();
             loadAutoSave();
+
+            window.addEventListener('resize', () => {
+                if (pdfDoc) {
+                    canvas.setWidth(wrapper.clientWidth);
+                    canvas.setHeight(wrapper.clientHeight);
+                    fitToScreen();
+                }
+            });
+        }
+
+        function showLoading(show, text = "Processing...") {
+            document.getElementById('loadingText').innerText = text;
+            document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
         }
 
         // --- PDF Loading & Rendering ---
@@ -226,18 +259,18 @@
             const file = e.target.files[0];
             if (!file) return;
 
+            showLoading(true, "Loading PDF...");
             const arrayBuffer = await file.arrayBuffer();
             pdfBytesOriginal = arrayBuffer;
             
             pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             document.getElementById('exportBtn').disabled = false;
             
-            pageCanvases = {};
             document.getElementById('thumbnailsContainer').innerHTML = '';
             
             await renderThumbnails();
             await loadPage(1);
-            saveToLocal();
+            showLoading(false);
         });
 
         async function renderThumbnails() {
@@ -246,10 +279,10 @@
                 const page = await pdfDoc.getPage(i);
                 const viewport = page.getViewport({ scale: 0.3 });
                 
-                const wrapper = document.createElement('div');
-                wrapper.className = 'thumbnail';
-                wrapper.id = `thumb-${i}`;
-                wrapper.onclick = () => loadPage(i);
+                const thumbWrapper = document.createElement('div');
+                thumbWrapper.className = 'thumbnail';
+                thumbWrapper.id = `thumb-${i}`;
+                thumbWrapper.onclick = () => loadPage(i);
 
                 const thumbCanvas = document.createElement('canvas');
                 const ctx = thumbCanvas.getContext('2d');
@@ -262,58 +295,73 @@
                 label.className = 'thumbnail-label';
                 label.innerText = `Page ${i}`;
 
-                wrapper.appendChild(thumbCanvas);
-                wrapper.appendChild(label);
-                container.appendChild(wrapper);
+                thumbWrapper.appendChild(thumbCanvas);
+                thumbWrapper.appendChild(label);
+                container.appendChild(thumbWrapper);
             }
         }
 
         async function loadPage(pageNum) {
+            showLoading(true, `Loading Page ${pageNum}...`);
+            
             // Save current page state before switching
             if (pdfDoc && canvas.getObjects().length > 0) {
-                pageCanvases[currentPageNum] = canvas.toJSON();
+                pageCanvases[currentPageNum] = getCanvasState();
             }
 
             currentPageNum = pageNum;
             
             // Update active thumbnail
             document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
-            document.getElementById(`thumb-${pageNum}`).classList.add('active');
+            const activeThumb = document.getElementById(`thumb-${pageNum}`);
+            if(activeThumb) activeThumb.classList.add('active');
 
             const page = await pdfDoc.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 1.5 }); // High res for editing
+            
+            // 1x scale ensures Fabric's internal coordinate system perfectly matches the PDF points
+            const unscaledViewport = page.getViewport({ scale: 1.0 });
+            currentPdfPageWidth = unscaledViewport.width;
+            currentPdfPageHeight = unscaledViewport.height;
 
-            // Render PDF page to a temporary canvas to use as background
+            // Render at 2x scale for visual crispness
+            const renderScale = 2.0;
+            const renderViewport = page.getViewport({ scale: renderScale });
+
             const tempCanvas = document.createElement('canvas');
             const ctx = tempCanvas.getContext('2d');
-            tempCanvas.width = viewport.width;
-            tempCanvas.height = viewport.height;
+            tempCanvas.width = renderViewport.width;
+            tempCanvas.height = renderViewport.height;
 
-            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+            await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
 
-            canvas.setWidth(viewport.width);
-            canvas.setHeight(viewport.height);
+            // Reset canvas DOM size to wrapper
+            canvas.setWidth(wrapper.clientWidth);
+            canvas.setHeight(wrapper.clientHeight);
             canvas.clear();
 
-            fabric.Image.fromURL(tempCanvas.toDataURL(), (img) => {
-                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
-                
-                // Restore objects if they exist for this page
+            const bgImage = new fabric.Image(tempCanvas);
+            bgImage.scale(1 / renderScale); // Scale down to match the 1:1 coordinate system
+
+            canvas.setBackgroundImage(bgImage, () => {
                 if (pageCanvases[pageNum]) {
                     canvas.loadFromJSON(pageCanvases[pageNum], () => {
-                        canvas.renderAll();
-                        saveHistory();
+                        // loadFromJSON clears background, so re-apply it
+                        canvas.setBackgroundImage(bgImage, () => {
+                            canvas.renderAll();
+                            if (!pageHistories[pageNum]) saveHistory();
+                            fitToScreen();
+                            showLoading(false);
+                        });
                     });
                 } else {
-                    saveHistory(); // Initial state
+                    if (!pageHistories[pageNum]) saveHistory();
+                    fitToScreen();
+                    showLoading(false);
                 }
-                fitToScreen();
             });
         }
 
         // --- Canvas Navigation (Zoom & Pan) ---
-        const wrapper = document.getElementById('canvasWrapper');
-        
         canvas.on('mouse:wheel', function(opt) {
             var delta = opt.e.deltaY;
             var zoom = canvas.getZoom();
@@ -324,6 +372,7 @@
             opt.e.preventDefault();
             opt.e.stopPropagation();
             updateZoomLabel();
+            updateGrid();
         });
 
         window.addEventListener('keydown', (e) => {
@@ -363,6 +412,7 @@
                 this.requestRenderAll();
                 this.lastPosX = e.clientX;
                 this.lastPosY = e.clientY;
+                updateGrid();
             }
         });
 
@@ -372,26 +422,43 @@
         });
 
         function fitToScreen() {
+            if (!currentPdfPageWidth || !currentPdfPageHeight) return;
             const padding = 40;
-            const containerWidth = wrapper.clientWidth - padding;
-            const containerHeight = wrapper.clientHeight - padding;
-            const scaleX = containerWidth / canvas.getWidth();
-            const scaleY = containerHeight / canvas.getHeight();
+            const cw = wrapper.clientWidth;
+            const ch = wrapper.clientHeight;
+            
+            if (cw === 0 || ch === 0) {
+                setTimeout(fitToScreen, 50);
+                return;
+            }
+
+            const scaleX = (cw - padding) / currentPdfPageWidth;
+            const scaleY = (ch - padding) / currentPdfPageHeight;
             const scale = Math.min(scaleX, scaleY);
             
             canvas.setZoom(scale);
-            canvas.viewportTransform[4] = (wrapper.clientWidth - canvas.getWidth() * scale) / 2;
-            canvas.viewportTransform[5] = (wrapper.clientHeight - canvas.getHeight() * scale) / 2;
+            canvas.viewportTransform[4] = (cw - currentPdfPageWidth * scale) / 2;
+            canvas.viewportTransform[5] = (ch - currentPdfPageHeight * scale) / 2;
             canvas.requestRenderAll();
             updateZoomLabel();
+            updateGrid();
         }
 
         function updateZoomLabel() {
             document.getElementById('zoomLevel').innerText = Math.round(canvas.getZoom() * 100) + '%';
         }
 
-        document.getElementById('zoomInBtn').onclick = () => { canvas.setZoom(canvas.getZoom() * 1.2); updateZoomLabel(); };
-        document.getElementById('zoomOutBtn').onclick = () => { canvas.setZoom(canvas.getZoom() / 1.2); updateZoomLabel(); };
+        function updateGrid() {
+            const grid = document.getElementById('gridOverlay');
+            if (grid.classList.contains('active')) {
+                const vpt = canvas.viewportTransform;
+                grid.style.backgroundSize = `${GRID_SIZE * vpt[0]}px ${GRID_SIZE * vpt[3]}px`;
+                grid.style.backgroundPosition = `${vpt[4]}px ${vpt[5]}px`;
+            }
+        }
+
+        document.getElementById('zoomInBtn').onclick = () => { canvas.setZoom(canvas.getZoom() * 1.2); updateZoomLabel(); updateGrid(); };
+        document.getElementById('zoomOutBtn').onclick = () => { canvas.setZoom(canvas.getZoom() / 1.2); updateZoomLabel(); updateGrid(); };
         document.getElementById('fitScreenBtn').onclick = fitToScreen;
 
         // --- Element Manipulation & Snapping ---
@@ -448,6 +515,7 @@
                 const overlay = document.getElementById('gridOverlay');
                 overlay.classList.toggle('active');
                 e.target.classList.toggle('active');
+                updateGrid();
             };
 
             // Snap Toggles
@@ -464,42 +532,53 @@
 
             // Add Elements
             document.getElementById('addTextBtn').onclick = () => {
+                if(!pdfDoc) return alert("Please open a PDF first.");
+                const center = canvas.getVpCenter();
                 const text = new fabric.IText('Double click to edit', {
-                    left: 100, top: 100, fontFamily: 'Helvetica', fontSize: 20, fill: '#000000'
+                    left: center.x - 80, top: center.y - 10, fontFamily: 'Helvetica', fontSize: 20, fill: '#000000'
                 });
                 canvas.add(text);
                 canvas.setActiveObject(text);
+                saveHistory();
+                saveToLocal();
             };
 
             document.getElementById('imageInput').addEventListener('change', function(e) {
+                if(!pdfDoc) return alert("Please open a PDF first.");
                 const file = e.target.files[0];
+                if (!file) return;
                 const reader = new FileReader();
                 reader.onload = function(f) {
                     const data = f.target.result;
                     fabric.Image.fromURL(data, function(img) {
+                        const center = canvas.getVpCenter();
                         img.scaleToWidth(200);
+                        img.set({ left: center.x - 100, top: center.y - (img.getScaledHeight()/2) });
                         canvas.add(img);
                         canvas.setActiveObject(img);
+                        saveHistory();
+                        saveToLocal();
                     });
                 };
                 reader.readAsDataURL(file);
+                e.target.value = ''; // Reset input
             });
 
             // Alignment
             document.getElementById('alignCenterH').onclick = () => {
                 const obj = canvas.getActiveObject();
-                if(obj) { obj.centerH(); obj.setCoords(); canvas.renderAll(); saveHistory(); }
+                if(obj) { obj.centerH(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }
             };
             document.getElementById('alignCenterV').onclick = () => {
                 const obj = canvas.getActiveObject();
-                if(obj) { obj.centerV(); obj.setCoords(); canvas.renderAll(); saveHistory(); }
+                if(obj) { obj.centerV(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }
             };
 
             // Z-Index
-            document.getElementById('bringFrontBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringToFront(obj); saveHistory(); }};
-            document.getElementById('bringForwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringForward(obj); saveHistory(); }};
-            document.getElementById('sendBackwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendBackwards(obj); saveHistory(); }};
-            document.getElementById('sendBackBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendToBack(obj); saveHistory(); }};
+            document.getElementById('bringFrontBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringToFront(obj); saveHistory(); saveToLocal(); }};
+            document.getElementById('bringForwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringForward(obj); saveHistory(); saveToLocal(); }};
+            document.getElementById('sendBackwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendBackwards(obj); saveHistory(); saveToLocal(); }};
+            document.getElementById('sendBackBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendToBack(obj); saveHistory(); saveToLocal(); }};
 
             // Locking & Deleting
             document.getElementById('lockBtn').onclick = () => {
@@ -535,7 +614,10 @@
 
         function updatePropertiesPanel() {
             const obj = canvas.getActiveObject();
-            if (!obj) return;
+            if (!obj) {
+                document.getElementById('textProperties').style.display = 'none';
+                return;
+            }
 
             if (obj.type === 'i-text' || obj.type === 'text') {
                 document.getElementById('textProperties').style.display = 'block';
@@ -553,6 +635,7 @@
                 obj.set(prop, value);
                 canvas.renderAll();
                 saveHistory();
+                saveToLocal();
             }
         }
 
@@ -564,6 +647,7 @@
                     canvas.remove(object);
                 });
                 saveHistory();
+                saveToLocal();
             }
         }
 
@@ -590,7 +674,7 @@
                             clonedObj.set({ left: clonedObj.left + 10, top: clonedObj.top + 10, evented: true });
                             if (clonedObj.type === 'activeSelection') {
                                 clonedObj.canvas = canvas;
-                                clonedObj.forEachObject((obj) => canvas.add(obj));
+                                clonedObj.forEachObject((o) => canvas.add(o));
                                 clonedObj.setCoords();
                             } else {
                                 canvas.add(clonedObj);
@@ -599,6 +683,7 @@
                             canvas.setActiveObject(clonedObj);
                             canvas.requestRenderAll();
                             saveHistory();
+                            saveToLocal();
                         });
                     }
                 } else if (e.ctrlKey && e.key === 'z') {
@@ -619,47 +704,63 @@
                     obj.setCoords();
                     canvas.renderAll();
                     saveHistory();
+                    saveToLocal();
                 }
             });
         }
 
-        // --- Undo / Redo Stack ---
-        function saveHistory() {
-            if (isHistoryAction) return;
+        // --- Undo / Redo Stack (Per Page) ---
+        function getCanvasState() {
             const json = canvas.toJSON();
-            history = history.slice(0, historyIndex + 1);
-            history.push(json);
-            historyIndex++;
+            delete json.backgroundImage; // Do not serialize the heavy background image
+            return json;
         }
 
-        function undo() {
-            if (historyIndex > 0) {
-                isHistoryAction = true;
-                historyIndex--;
-                canvas.loadFromJSON(history[historyIndex], () => {
+        function saveHistory() {
+            if (isHistoryAction || !pdfDoc) return;
+            if (!pageHistories[currentPageNum]) {
+                pageHistories[currentPageNum] = { history:[], index: -1 };
+            }
+            const ph = pageHistories[currentPageNum];
+            const json = getCanvasState();
+            ph.history = ph.history.slice(0, ph.index + 1);
+            ph.history.push(json);
+            ph.index++;
+        }
+
+        function loadState(state) {
+            const bgImage = canvas.backgroundImage; // Preserve background
+            canvas.loadFromJSON(state, () => {
+                canvas.setBackgroundImage(bgImage, () => {
                     canvas.renderAll();
                     isHistoryAction = false;
                     saveToLocal();
                 });
+            });
+        }
+
+        function undo() {
+            const ph = pageHistories[currentPageNum];
+            if (ph && ph.index > 0) {
+                isHistoryAction = true;
+                ph.index--;
+                loadState(ph.history[ph.index]);
             }
         }
 
         function redo() {
-            if (historyIndex < history.length - 1) {
+            const ph = pageHistories[currentPageNum];
+            if (ph && ph.index < ph.history.length - 1) {
                 isHistoryAction = true;
-                historyIndex++;
-                canvas.loadFromJSON(history[historyIndex], () => {
-                    canvas.renderAll();
-                    isHistoryAction = false;
-                    saveToLocal();
-                });
+                ph.index++;
+                loadState(ph.history[ph.index]);
             }
         }
 
         // --- Local Auto-Save ---
         function saveToLocal() {
             if(pdfDoc) {
-                pageCanvases[currentPageNum] = canvas.toJSON();
+                pageCanvases[currentPageNum] = getCanvasState();
                 localStorage.setItem('pdf_editor_draft', JSON.stringify(pageCanvases));
             }
         }
@@ -667,9 +768,12 @@
         function loadAutoSave() {
             const draft = localStorage.getItem('pdf_editor_draft');
             if (draft) {
-                // Note: In a full app, we'd also need to store the original PDF ArrayBuffer in IndexedDB.
-                // For this single-file prototype, we just notify the user that a draft exists.
-                console.log("Draft found in localStorage. Please upload the original PDF to apply the draft.");
+                try {
+                    pageCanvases = JSON.parse(draft);
+                    console.log("Draft loaded from localStorage. Upload the original PDF to apply.");
+                } catch (e) {
+                    console.error("Failed to parse draft", e);
+                }
             }
         }
 
@@ -677,11 +781,12 @@
         async function exportPDF() {
             if (!pdfBytesOriginal) return;
             
+            showLoading(true, "Exporting PDF...");
             document.getElementById('exportBtn').innerText = "Exporting...";
             
             try {
                 // Save current page state
-                pageCanvases[currentPageNum] = canvas.toJSON();
+                pageCanvases[currentPageNum] = getCanvasState();
 
                 const pdfDocLib = await PDFLib.PDFDocument.load(pdfBytesOriginal);
                 const pages = pdfDocLib.getPages();
@@ -711,13 +816,26 @@
                             else font = await pdfDocLib.embedFont(PDFLib.StandardFonts.Helvetica);
 
                             const rgb = hexToRgb(obj.fill || '#000000');
-
-                            pdfPage.drawText(obj.text, {
-                                x: obj.left,
-                                y: height - obj.top - obj.fontSize, // Adjust for baseline
-                                size: obj.fontSize,
-                                font: font,
-                                color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255)
+                            const lines = obj.textLines || obj.text.split('\n');
+                            const lineHeight = obj.fontSize * obj.lineHeight;
+                            
+                            lines.forEach((line, index) => {
+                                // Calculate alignment offset
+                                let lineWidth = font.widthOfTextAtSize(line, obj.fontSize);
+                                let offsetX = 0;
+                                if (obj.textAlign === 'center') {
+                                    offsetX = (obj.width - lineWidth) / 2;
+                                } else if (obj.textAlign === 'right') {
+                                    offsetX = obj.width - lineWidth;
+                                }
+                                
+                                pdfPage.drawText(line, {
+                                    x: obj.left + offsetX,
+                                    y: height - obj.top - obj.fontSize - (index * lineHeight), // Adjust for baseline and multi-line
+                                    size: obj.fontSize,
+                                    font: font,
+                                    color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255)
+                                });
                             });
                         } else if (obj.type === 'image') {
                             const imgData = obj.getSrc();
@@ -752,6 +870,7 @@
                 alert("An error occurred during export.");
             } finally {
                 document.getElementById('exportBtn').innerHTML = '<i class="fas fa-download"></i> Export';
+                showLoading(false);
             }
         }
 
