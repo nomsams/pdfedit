@@ -5,8 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced PDF Editor</title>
     
-    <!-- Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Libraries (Using highly stable 2.16.105 for PDF.js as per your reference) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+      (function ensurePdfjsReady(){
+        const lib = window.pdfjsLib;
+        if (!lib) { return setTimeout(ensurePdfjsReady, 30); }
+        lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+      })();
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -14,36 +21,19 @@
     <style>
         :root {
             /* Dark Theme (Default) */
-            --bg-color: #121212;
-            --panel-bg: #1e1e1e;
-            --toolbar-bg: #000000;
-            --text-color: #ffffff;
-            --border-color: #333333;
-            --accent-color: #ffffff;
-            --accent-text: #000000;
-            --hover-bg: #2a2a2a;
-            --canvas-bg: #2c2c2c;
-            --log-bg: #000000;
-            --log-text: #00ff00;
+            --bg-color: #121212; --panel-bg: #1e1e1e; --toolbar-bg: #000000;
+            --text-color: #ffffff; --border-color: #333333; --accent-color: #3b82f6;
+            --accent-text: #ffffff; --hover-bg: #2a2a2a; --canvas-bg: #0b0e14;
         }
 
         [data-theme="light"] {
             /* Light Theme */
-            --bg-color: #f5f5f5;
-            --panel-bg: #ffffff;
-            --toolbar-bg: #e0e0e0;
-            --text-color: #000000;
-            --border-color: #cccccc;
-            --accent-color: #000000;
-            --accent-text: #ffffff;
-            --hover-bg: #e8e8e8;
-            --canvas-bg: #d0d0d0;
-            --log-bg: #ffffff;
-            --log-text: #000000;
+            --bg-color: #f5f5f5; --panel-bg: #ffffff; --toolbar-bg: #e0e0e0;
+            --text-color: #000000; --border-color: #cccccc; --accent-color: #3b82f6;
+            --accent-text: #ffffff; --hover-bg: #e8e8e8; --canvas-bg: #d0d0d0;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
         body { background-color: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
         /* Toolbar */
@@ -51,11 +41,10 @@
         .toolbar-group { display: flex; gap: 5px; border-right: 1px solid var(--border-color); padding-right: 15px; align-items: center; }
         .toolbar-group:last-child { border-right: none; }
         
-        button, label.btn { background: transparent; color: var(--text-color); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
-        button:hover, label.btn:hover { background: var(--hover-bg); }
-        button.active { background: var(--accent-color); color: var(--accent-text); }
+        button, label.btn { background: transparent; color: var(--text-color); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
+        button:hover, label.btn:hover { background: var(--hover-bg); border-color: var(--accent-color); }
+        button.active { background: var(--accent-color); color: var(--accent-text); border-color: var(--accent-color); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
         input[type="file"] { display: none; }
 
         /* Main Layout */
@@ -63,41 +52,42 @@
 
         /* Sidebars */
         .sidebar { width: 250px; background-color: var(--panel-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; z-index: 10; }
-        .sidebar-right { border-right: none; border-left: 1px solid var(--border-color); padding: 15px; }
+        .sidebar-right { border-right: none; border-left: 1px solid var(--border-color); padding: 15px; width: 280px; }
         
         .panel-section { margin-bottom: 20px; }
-        .panel-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; color: #888; }
-        
+        .panel-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; color: #888; font-weight: 700; }
         .prop-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
         .prop-row label { font-size: 12px; width: 60px; }
-        select, input[type="number"], input[type="color"] { width: 100%; padding: 5px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; }
+        select, input[type="number"], input[type="color"] { width: 100%; padding: 6px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; font-size: 13px; }
         
         /* Thumbnails */
-        .thumbnail { margin: 10px; border: 2px solid transparent; cursor: pointer; position: relative; transition: 0.2s; }
+        .thumbnail { margin: 10px; border: 2px solid transparent; cursor: pointer; position: relative; transition: 0.2s; background: #fff; border-radius: 4px; overflow: hidden; }
         .thumbnail:hover { border-color: #888; }
-        .thumbnail.active { border-color: var(--accent-color); }
-        .thumbnail canvas { width: 100%; display: block; background: white; }
-        .thumbnail-label { text-align: center; font-size: 12px; padding: 5px; }
+        .thumbnail.active { border-color: var(--accent-color); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3); }
+        .thumbnail canvas { width: 100%; display: block; }
+        .thumbnail-label { text-align: center; font-size: 11px; padding: 6px; background: var(--panel-bg); color: var(--text-color); border-top: 1px solid var(--border-color); }
 
-        /* Canvas Area */
-        .canvas-wrapper { flex: 1; background-color: var(--canvas-bg); position: relative; overflow: hidden; outline: none; }
+        /* Superior Canvas Architecture */
+        .canvas-wrapper { flex: 1; background-color: var(--canvas-bg); overflow: auto; padding: 40px; position: relative; }
+        #canvasContainer { position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.5); background: white; transition: width 0.1s, height 0.1s; }
         
         /* Grid Overlay */
-        .grid-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background-size: 20px 20px; background-image: linear-gradient(to right, rgba(128,128,128,0.2) 1px, transparent 1px), linear-gradient(to bottom, rgba(128,128,128,0.2) 1px, transparent 1px); display: none; z-index: 5; }
+        .grid-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background-image: linear-gradient(to right, rgba(128,128,128,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(128,128,128,0.3) 1px, transparent 1px); display: none; z-index: 5; }
         .grid-overlay.active { display: block; }
 
-        /* Utilities */
-        .icon-btn-group { display: flex; gap: 2px; }
+        .icon-btn-group { display: flex; gap: 4px; }
         .icon-btn-group button { padding: 6px 8px; flex: 1; justify-content: center; }
 
-        /* Loading Overlay & Logs */
-        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); color: white; z-index: 9999; justify-content: center; align-items: center; flex-direction: column; gap: 15px; }
-        .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid white; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        /* Loading Overlay & Floating Logs */
+        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); color: white; z-index: 9999; justify-content: center; align-items: center; flex-direction: column; gap: 15px; backdrop-filter: blur(4px); }
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent-color); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #logContainer { width: 80%; max-width: 600px; height: 200px; background: var(--log-bg); color: var(--log-text); font-family: monospace; font-size: 12px; padding: 10px; overflow-y: auto; border-radius: 4px; border: 1px solid #444; text-align: left; }
-        .log-info { color: #00ff00; }
-        .log-warn { color: #ffff00; }
-        .log-error { color: #ff0000; }
+        
+        #floatingLogs { display: none; position: absolute; bottom: 20px; right: 20px; width: 450px; height: 300px; background: rgba(11, 14, 20, 0.95); color: #10b981; font-family: ui-monospace, monospace; font-size: 11px; padding: 15px; overflow-y: auto; border-radius: 8px; z-index: 9999; border: 1px solid #2a2f3e; box-shadow: 0 10px 30px rgba(0,0,0,0.5); flex-direction: column; }
+        .log-header { display: flex; justify-content: space-between; border-bottom: 1px solid #2a2f3e; padding-bottom: 8px; margin-bottom: 8px; color: #fff; font-weight: bold; }
+        .log-info { color: #10b981; margin-bottom: 4px; }
+        .log-warn { color: #f59e0b; margin-bottom: 4px; }
+        .log-error { color: #ef4444; margin-bottom: 4px; }
     </style>
 </head>
 <body>
@@ -105,12 +95,13 @@
     <!-- Toolbar -->
     <div class="toolbar">
         <div class="toolbar-group">
-            <label class="btn"><i class="fas fa-folder-open"></i> Open PDF<input type="file" id="fileInput" accept="application/pdf"></label>
+            <label class="btn primary"><i class="fas fa-folder-open"></i> Open PDF<input type="file" id="fileInput" accept="application/pdf"></label>
             <button id="exportBtn" disabled><i class="fas fa-download"></i> Export</button>
         </div>
         <div class="toolbar-group">
             <button id="undoBtn" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
             <button id="redoBtn" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
+            <button id="deleteToolbarBtn" title="Delete Selected (Del)" style="color: #ef4444;"><i class="fas fa-trash"></i></button>
         </div>
         <div class="toolbar-group">
             <button id="addTextBtn"><i class="fas fa-font"></i> Add Text</button>
@@ -119,7 +110,7 @@
         </div>
         <div class="toolbar-group">
             <button id="zoomOutBtn"><i class="fas fa-search-minus"></i></button>
-            <span id="zoomLevel" style="font-size: 14px; width: 45px; text-align: center;">100%</span>
+            <span id="zoomLevel" style="font-size: 13px; width: 45px; text-align: center; font-weight: bold;">100%</span>
             <button id="zoomInBtn"><i class="fas fa-search-plus"></i></button>
             <button id="fitScreenBtn"><i class="fas fa-expand"></i> Fit</button>
         </div>
@@ -129,6 +120,7 @@
             <button id="targetSnapBtn" title="Target Snap Mode"><i class="fas fa-crosshairs"></i> Target Snap</button>
         </div>
         <div class="toolbar-group" style="margin-left: auto;">
+            <button id="toggleLogsBtn" title="Toggle System Logs"><i class="fas fa-terminal"></i> Logs</button>
             <button id="themeToggleBtn"><i class="fas fa-adjust"></i> Theme</button>
         </div>
     </div>
@@ -138,19 +130,29 @@
         <!-- Loading Overlay -->
         <div id="loadingOverlay">
             <div class="spinner"></div>
-            <div id="loadingText" style="font-size: 20px; font-weight: bold;">Processing...</div>
-            <div id="logContainer"></div>
+            <div id="loadingText" style="font-size: 18px; font-weight: 600; letter-spacing: 1px;">Processing...</div>
+        </div>
+
+        <!-- Floating Logs CLI -->
+        <div id="floatingLogs">
+            <div class="log-header">
+                <span>System Logs</span>
+                <button onclick="document.getElementById('logContent').innerHTML=''" style="background:transparent; border:none; color:#888; cursor:pointer; font-size:11px;">Clear</button>
+            </div>
+            <div id="logContent"></div>
         </div>
 
         <!-- Left Sidebar (Pages) -->
         <div class="sidebar" id="thumbnailsContainer">
-            <div style="padding: 15px; text-align: center; color: #888; font-size: 13px;">Upload a PDF to begin</div>
+            <div style="padding: 20px; text-align: center; color: #888; font-size: 13px;">Upload a PDF to begin</div>
         </div>
 
-        <!-- Canvas Area -->
-        <div class="canvas-wrapper" id="canvasWrapper" tabindex="0">
-            <div class="grid-overlay" id="gridOverlay"></div>
-            <canvas id="pdfCanvas"></canvas>
+        <!-- Canvas Area (Native Scrollbars) -->
+        <div class="canvas-wrapper" id="canvasWrapper">
+            <div id="canvasContainer">
+                <div class="grid-overlay" id="gridOverlay"></div>
+                <canvas id="pdfCanvas"></canvas>
+            </div>
         </div>
 
         <!-- Right Sidebar (Properties) -->
@@ -202,7 +204,6 @@
             <div class="panel-section">
                 <h3>Element</h3>
                 <button id="lockBtn" style="width: 100%; justify-content: center;"><i class="fas fa-lock"></i> Lock/Unlock</button>
-                <button id="deleteBtn" style="width: 100%; justify-content: center; margin-top: 5px; color: #ff4444; border-color: #ff4444;"><i class="fas fa-trash"></i> Delete</button>
             </div>
         </div>
     </div>
@@ -210,17 +211,27 @@
     <script>
         // --- Verbose Logging System ---
         function logVerbose(msg, type = 'info') {
-            const logContainer = document.getElementById('logContainer');
+            const logContent = document.getElementById('logContent');
             const entry = document.createElement('div');
             const time = new Date().toLocaleTimeString();
             entry.className = `log-${type}`;
             entry.innerText = `[${time}] ${msg}`;
-            logContainer.appendChild(entry);
-            logContainer.scrollTop = logContainer.scrollHeight;
+            logContent.appendChild(entry);
+            logContent.parentElement.scrollTop = logContent.parentElement.scrollHeight;
             
             if (type === 'error') console.error(msg);
             else if (type === 'warn') console.warn(msg);
             else console.log(msg);
+
+            // Reset loading timeout if active to prevent premature closure during heavy tasks
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay.style.display === 'flex') {
+                clearTimeout(loadingTimeout);
+                loadingTimeout = setTimeout(() => {
+                    overlay.style.display = 'none';
+                    logVerbose("Loading overlay dismissed due to inactivity.", "warn");
+                }, 10000);
+            }
         }
 
         let loadingTimeout;
@@ -231,14 +242,13 @@
             if (show) {
                 overlay.style.display = 'flex';
                 logVerbose(`--- ${text} ---`);
-                // Failsafe: Auto-hide loading screen after 15 seconds to prevent permanent lock
                 clearTimeout(loadingTimeout);
                 loadingTimeout = setTimeout(() => {
                     if (overlay.style.display === 'flex') {
                         logVerbose("Loading timeout reached. Forcing overlay to close.", "warn");
                         overlay.style.display = 'none';
                     }
-                }, 15000);
+                }, 10000);
             } else {
                 clearTimeout(loadingTimeout);
                 overlay.style.display = 'none';
@@ -246,24 +256,19 @@
         }
 
         // --- Configuration & State ---
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        
         let pdfDoc = null;
         let currentPageNum = 1;
         let canvas;
         let pdfBytesOriginal = null;
         
-        // State Management
         let pageCanvases = {}; 
         let pageHistories = {}; 
         let isHistoryAction = false;
 
-        // Dimensions
         let currentPdfPageWidth = 0;
         let currentPdfPageHeight = 0;
+        let currentZoom = 1;
 
-        // Modes & Toggles
-        let isPanning = false;
         let snapEnabled = true;
         let targetSnapMode = false;
         let targetElement = null;
@@ -273,6 +278,7 @@
         const GRID_SIZE = 20;
 
         const wrapper = document.getElementById('canvasWrapper');
+        const container = document.getElementById('canvasContainer');
 
         // --- Initialization ---
         function init() {
@@ -283,26 +289,10 @@
                     selection: true
                 });
 
-                // Initial sizing
-                canvas.setWidth(wrapper.clientWidth || 800);
-                canvas.setHeight(wrapper.clientHeight || 600);
-
-                // Superior Resize Handling using ResizeObserver
-                const resizeObserver = new ResizeObserver(entries => {
-                    for (let entry of entries) {
-                        const { width, height } = entry.contentRect;
-                        if (width > 0 && height > 0 && pdfDoc) {
-                            canvas.setWidth(width);
-                            canvas.setHeight(height);
-                            fitToScreen();
-                        }
-                    }
-                });
-                resizeObserver.observe(wrapper);
-
                 setupEventListeners();
                 setupKeyboardShortcuts();
                 setupCanvasEvents();
+                setupNativePanning();
                 loadAutoSave();
                 logVerbose("Initialization complete. Ready for PDF upload.");
             } catch (e) {
@@ -328,11 +318,9 @@
                 document.getElementById('exportBtn').disabled = false;
                 document.getElementById('thumbnailsContainer').innerHTML = '';
                 
-                // SUPERIOR FIX: Load the main page FIRST so the user isn't blocked by thumbnails
+                // SUPERIOR FIX: Load main page FIRST, do not await thumbnails
                 await loadPage(1);
-                
-                // Generate thumbnails asynchronously in the background
-                renderThumbnails();
+                renderThumbnails(); // Async background task
             } catch (error) {
                 logVerbose(`Failed to load PDF: ${error.message}`, "error");
                 alert("Failed to load PDF. Check logs.");
@@ -342,11 +330,11 @@
 
         async function renderThumbnails() {
             logVerbose("Generating sidebar thumbnails in background...");
-            const container = document.getElementById('thumbnailsContainer');
+            const thumbContainer = document.getElementById('thumbnailsContainer');
             for (let i = 1; i <= pdfDoc.numPages; i++) {
                 try {
                     const page = await pdfDoc.getPage(i);
-                    const viewport = page.getViewport({ scale: 0.2 }); // Smaller scale for faster thumbs
+                    const viewport = page.getViewport({ scale: 0.2 });
                     
                     const thumbWrapper = document.createElement('div');
                     thumbWrapper.className = 'thumbnail';
@@ -355,30 +343,36 @@
                     thumbWrapper.onclick = () => loadPage(i);
 
                     const thumbCanvas = document.createElement('canvas');
-                    const ctx = thumbCanvas.getContext('2d');
                     thumbCanvas.width = viewport.width;
                     thumbCanvas.height = viewport.height;
+                    const ctx = thumbCanvas.getContext('2d');
 
                     const renderTask = page.render({ canvasContext: ctx, viewport: viewport });
                     
-                    // Anti-Hang Timeout: Force resolve if pdf.js gets stuck on a font/stream
-                    await Promise.race([
+                    // Anti-Hang Timeout for Thumbnails
+                    Promise.race([
                         renderTask.promise,
-                        new Promise((resolve) => setTimeout(resolve, 2000))
-                    ]);
-                    
-                    const label = document.createElement('div');
-                    label.className = 'thumbnail-label';
-                    label.innerText = `Page ${i}`;
-
-                    thumbWrapper.appendChild(thumbCanvas);
-                    thumbWrapper.appendChild(label);
-                    container.appendChild(thumbWrapper);
+                        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
+                    ]).then(() => {
+                        const label = document.createElement('div');
+                        label.className = 'thumbnail-label';
+                        label.innerText = `Page ${i}`;
+                        thumbWrapper.appendChild(thumbCanvas);
+                        thumbWrapper.appendChild(label);
+                        thumbContainer.appendChild(thumbWrapper);
+                    }).catch(err => {
+                        logVerbose(`Thumbnail warning for page ${i}: ${err.message}`, "warn");
+                        const label = document.createElement('div');
+                        label.className = 'thumbnail-label';
+                        label.innerText = `Page ${i} (!)`;
+                        thumbWrapper.appendChild(thumbCanvas);
+                        thumbWrapper.appendChild(label);
+                        thumbContainer.appendChild(thumbWrapper);
+                    });
                 } catch (err) {
-                    logVerbose(`Error generating thumbnail for page ${i}: ${err.message}`, "warn");
+                    logVerbose(`Error setting up thumbnail for page ${i}: ${err.message}`, "warn");
                 }
             }
-            logVerbose("All thumbnails generated.");
         }
 
         async function loadPage(pageNum) {
@@ -402,7 +396,7 @@
                 currentPdfPageWidth = unscaledViewport.width;
                 currentPdfPageHeight = unscaledViewport.height;
 
-                // Memory Crash Prevention: Cap scale to prevent massive canvas memory issues
+                // Memory Crash Prevention
                 let renderScale = 2.0; 
                 if (currentPdfPageWidth * renderScale > 4000 || currentPdfPageHeight * renderScale > 4000) {
                     renderScale = Math.min(4000 / currentPdfPageWidth, 4000 / currentPdfPageHeight);
@@ -410,29 +404,34 @@
                 }
 
                 const renderViewport = page.getViewport({ scale: renderScale });
-
                 const tempCanvas = document.createElement('canvas');
-                const ctx = tempCanvas.getContext('2d');
                 tempCanvas.width = renderViewport.width;
                 tempCanvas.height = renderViewport.height;
+                const ctx = tempCanvas.getContext('2d');
 
                 logVerbose(`Rendering PDF background (${tempCanvas.width}x${tempCanvas.height})...`);
                 const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
                 
-                // Anti-Hang Timeout: 5 second timeout for rendering to prevent infinite hangs
-                await Promise.race([
-                    renderTask.promise,
-                    new Promise((resolve) => setTimeout(() => {
-                        logVerbose("PDF render task timed out, proceeding with available buffer.", "warn");
-                        resolve();
-                    }, 5000))
-                ]);
+                // Anti-Hang Timeout for Main Page
+                try {
+                    await Promise.race([
+                        renderTask.promise,
+                        new Promise((_, reject) => setTimeout(() => reject(new Error("PDF.js render timeout")), 8000))
+                    ]);
+                } catch (e) {
+                    logVerbose(`Render warning: ${e.message}. Proceeding with partial buffer.`, "warn");
+                }
 
                 logVerbose("Applying background to Fabric canvas...");
+                
+                // Setup Fabric Canvas dimensions to exact PDF points
+                canvas.clear();
+                canvas.setWidth(currentPdfPageWidth);
+                canvas.setHeight(currentPdfPageHeight);
+
                 const bgImage = new fabric.Image(tempCanvas);
                 bgImage.scale(1 / renderScale);
 
-                // Await the background image setting to guarantee it finishes before hiding loading screen
                 await new Promise((resolve) => {
                     canvas.setBackgroundImage(bgImage, () => {
                         logVerbose("Background applied successfully.");
@@ -444,7 +443,6 @@
                     logVerbose("Restoring previous edits for this page...");
                     await new Promise((resolve) => {
                         canvas.loadFromJSON(pageCanvases[pageNum], () => {
-                            // loadFromJSON clears the background, so we must re-apply it
                             canvas.setBackgroundImage(bgImage, () => {
                                 canvas.renderAll();
                                 resolve();
@@ -465,85 +463,142 @@
             }
         }
 
-        // --- Canvas Navigation (Zoom & Pan) ---
-        canvas.on('mouse:wheel', function(opt) {
-            var delta = opt.e.deltaY;
-            var zoom = canvas.getZoom();
-            zoom *= 0.999 ** delta;
-            if (zoom > 5) zoom = 5;
-            if (zoom < 0.1) zoom = 0.1;
-            canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
-            opt.e.preventDefault();
-            opt.e.stopPropagation();
-            updateZoomLabel();
+        // --- Superior Canvas Navigation (Native Scrollbars + CSS Centering) ---
+        function updateContainerCentering() {
+            container.style.margin = '0';
+            const wrapperWidth = wrapper.clientWidth;
+            const wrapperHeight = wrapper.clientHeight;
+            const containerWidth = container.offsetWidth;
+            const containerHeight = container.offsetHeight;
+            
+            let marginTop = 0;
+            let marginLeft = 0;
+            
+            if (containerWidth < wrapperWidth) marginLeft = (wrapperWidth - containerWidth) / 2;
+            if (containerHeight < wrapperHeight) marginTop = (wrapperHeight - containerHeight) / 2;
+            
+            container.style.marginLeft = marginLeft + 'px';
+            container.style.marginTop = marginTop + 'px';
+        }
+
+        function setZoom(zoom) {
+            currentZoom = zoom;
+            canvas.setZoom(zoom);
+            
+            // Scale the DOM element to prevent clipping
+            const newWidth = currentPdfPageWidth * zoom;
+            const newHeight = currentPdfPageHeight * zoom;
+            canvas.setWidth(newWidth);
+            canvas.setHeight(newHeight);
+            
+            container.style.width = newWidth + 'px';
+            container.style.height = newHeight + 'px';
+            
+            document.getElementById('zoomLevel').innerText = Math.round(zoom * 100) + '%';
             updateGrid();
-        });
-
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && e.target === document.body) {
-                isPanning = true;
-                canvas.defaultCursor = 'grab';
-            }
-        });
-
-        window.addEventListener('keyup', (e) => {
-            if (e.code === 'Space') {
-                isPanning = false;
-                canvas.defaultCursor = 'default';
-            }
-        });
+            updateContainerCentering();
+        }
 
         function fitToScreen() {
             if (!currentPdfPageWidth || !currentPdfPageHeight) return;
+            const padding = 60;
+            const cw = wrapper.clientWidth - padding;
+            const ch = wrapper.clientHeight - padding;
             
-            let cw = wrapper.clientWidth;
-            let ch = wrapper.clientHeight;
+            if (cw <= 0 || ch <= 0) return; // Hidden state
             
-            // Prevent Infinity scale bug if wrapper is hidden or not painted yet
-            if (cw === 0 || ch === 0) {
-                logVerbose("Wrapper dimensions are 0. Waiting for ResizeObserver.", "warn");
-                return; 
-            }
-
-            const padding = 40;
-            const scaleX = (cw - padding) / currentPdfPageWidth;
-            const scaleY = (ch - padding) / currentPdfPageHeight;
-            const scale = Math.min(scaleX, scaleY);
+            const scaleX = cw / currentPdfPageWidth;
+            const scaleY = ch / currentPdfPageHeight;
+            let zoom = Math.min(scaleX, scaleY);
+            if (zoom > 3) zoom = 3;
+            if (zoom < 0.1) zoom = 0.1;
             
-            canvas.setZoom(scale);
-            canvas.viewportTransform[4] = (cw - currentPdfPageWidth * scale) / 2;
-            canvas.viewportTransform[5] = (ch - currentPdfPageHeight * scale) / 2;
-            canvas.requestRenderAll();
-            updateZoomLabel();
-            updateGrid();
-        }
-
-        function updateZoomLabel() {
-            document.getElementById('zoomLevel').innerText = Math.round(canvas.getZoom() * 100) + '%';
+            setZoom(zoom);
         }
 
         function updateGrid() {
             const grid = document.getElementById('gridOverlay');
             if (grid.classList.contains('active')) {
-                const vpt = canvas.viewportTransform;
-                grid.style.backgroundSize = `${GRID_SIZE * vpt[0]}px ${GRID_SIZE * vpt[3]}px`;
-                grid.style.backgroundPosition = `${vpt[4]}px ${vpt[5]}px`;
+                grid.style.backgroundSize = `${GRID_SIZE * currentZoom}px ${GRID_SIZE * currentZoom}px`;
             }
         }
 
-        document.getElementById('zoomInBtn').onclick = () => { canvas.setZoom(canvas.getZoom() * 1.2); updateZoomLabel(); updateGrid(); };
-        document.getElementById('zoomOutBtn').onclick = () => { canvas.setZoom(canvas.getZoom() / 1.2); updateZoomLabel(); updateGrid(); };
+        document.getElementById('zoomInBtn').onclick = () => setZoom(currentZoom * 1.2);
+        document.getElementById('zoomOutBtn').onclick = () => setZoom(currentZoom / 1.2);
         document.getElementById('fitScreenBtn').onclick = fitToScreen;
+        window.addEventListener('resize', () => { if (pdfDoc) updateContainerCentering(); });
+
+        // --- Native Spacebar Panning ---
+        let isSpaceDown = false;
+        let isNativePanning = false;
+        let startX, startY, scrollLeft, scrollTop;
+
+        function setupNativePanning() {
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' && e.target === document.body) {
+                    e.preventDefault();
+                    if (!isSpaceDown) {
+                        isSpaceDown = true;
+                        wrapper.style.cursor = 'grab';
+                        canvas.selection = false;
+                        canvas.forEachObject(o => o.evented = false);
+                    }
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'Space') {
+                    isSpaceDown = false;
+                    wrapper.style.cursor = 'default';
+                    canvas.selection = true;
+                    canvas.forEachObject(o => o.evented = true);
+                }
+            });
+
+            wrapper.addEventListener('mousedown', (e) => {
+                if (isSpaceDown) {
+                    isNativePanning = true;
+                    startX = e.pageX - wrapper.offsetLeft;
+                    startY = e.pageY - wrapper.offsetTop;
+                    scrollLeft = wrapper.scrollLeft;
+                    scrollTop = wrapper.scrollTop;
+                    wrapper.style.cursor = 'grabbing';
+                }
+            });
+
+            wrapper.addEventListener('mousemove', (e) => {
+                if (!isNativePanning) return;
+                e.preventDefault();
+                const x = e.pageX - wrapper.offsetLeft;
+                const y = e.pageY - wrapper.offsetTop;
+                wrapper.scrollLeft = scrollLeft - (x - startX);
+                wrapper.scrollTop = scrollTop - (y - startY);
+            });
+
+            window.addEventListener('mouseup', () => {
+                isNativePanning = false;
+                if (isSpaceDown) wrapper.style.cursor = 'grab';
+            });
+        }
 
         // --- Element Manipulation & Snapping ---
         function setupCanvasEvents() {
+            canvas.on('mouse:wheel', function(opt) {
+                var delta = opt.e.deltaY;
+                var zoom = currentZoom * (0.999 ** delta);
+                if (zoom > 5) zoom = 5;
+                if (zoom < 0.1) zoom = 0.1;
+                setZoom(zoom);
+                opt.e.preventDefault();
+                opt.e.stopPropagation();
+            });
+
             canvas.on('mouse:down', function(opt) {
-                if (isPanning) {
-                    this.isDragging = true;
-                    this.selection = false;
-                    this.lastPosX = opt.e.clientX;
-                    this.lastPosY = opt.e.clientY;
-                } else if (targetSnapMode && opt.target) {
+                if (isSpaceDown) {
+                    opt.e.preventDefault();
+                    return;
+                }
+                if (targetSnapMode && opt.target) {
                     targetElement = opt.target;
                     logVerbose("Target element selected for snapping.");
                     document.getElementById('targetSnapBtn').classList.remove('active');
@@ -554,7 +609,7 @@
                     replaceStartY = pointer.y;
                     replaceRect = new fabric.Rect({
                         left: replaceStartX, top: replaceStartY, width: 0, height: 0,
-                        fill: 'rgba(255, 255, 255, 0.5)', stroke: '#ff0000', strokeDashArray:[5, 5],
+                        fill: 'rgba(59, 130, 246, 0.3)', stroke: '#3b82f6', strokeWidth: 2, strokeDashArray:[5, 5],
                         selectable: false, evented: false
                     });
                     canvas.add(replaceRect);
@@ -562,16 +617,7 @@
             });
 
             canvas.on('mouse:move', function(opt) {
-                if (this.isDragging) {
-                    var e = opt.e;
-                    var vpt = this.viewportTransform;
-                    vpt[4] += e.clientX - this.lastPosX;
-                    vpt[5] += e.clientY - this.lastPosY;
-                    this.requestRenderAll();
-                    this.lastPosX = e.clientX;
-                    this.lastPosY = e.clientY;
-                    updateGrid();
-                } else if (isReplacingArea && replaceRect) {
+                if (isReplacingArea && replaceRect) {
                     let pointer = canvas.getPointer(opt.e);
                     replaceRect.set({
                         width: Math.abs(pointer.x - replaceStartX),
@@ -584,13 +630,12 @@
             });
 
             canvas.on('mouse:up', function(opt) {
-                this.isDragging = false;
-                this.selection = true;
-
                 if (isReplacingArea && replaceRect) {
                     isReplacingArea = false;
                     canvas.defaultCursor = 'default';
                     document.getElementById('replaceAreaBtn').classList.remove('active');
+                    canvas.selection = true;
+                    canvas.forEachObject(o => o.evented = true);
                     
                     if (replaceRect.width < 10 || replaceRect.height < 10) {
                         canvas.remove(replaceRect);
@@ -608,19 +653,17 @@
                         let reader = new FileReader();
                         reader.onload = (f) => {
                             fabric.Image.fromURL(f.target.result, (img) => {
-                                // Create solid white mask to hide PDF background
+                                // Solid white mask
                                 let mask = new fabric.Rect({
                                     left: replaceRect.left, top: replaceRect.top,
                                     width: replaceRect.width, height: replaceRect.height,
                                     fill: '#ffffff', strokeWidth: 0
                                 });
                                 
-                                // Scale new image to fit the drawn box
                                 img.scaleToWidth(replaceRect.width);
                                 img.scaleToHeight(replaceRect.height);
                                 img.set({ left: replaceRect.left, top: replaceRect.top });
                                 
-                                // Group them so they move/scale together
                                 let group = new fabric.Group([mask, img], {
                                     left: replaceRect.left, top: replaceRect.top
                                 });
@@ -682,6 +725,11 @@
                 else body.setAttribute('data-theme', 'light');
             };
 
+            document.getElementById('toggleLogsBtn').onclick = () => {
+                const logs = document.getElementById('floatingLogs');
+                logs.style.display = logs.style.display === 'none' ? 'flex' : 'none';
+            };
+
             document.getElementById('gridToggleBtn').onclick = (e) => {
                 const overlay = document.getElementById('gridOverlay');
                 overlay.classList.toggle('active');
@@ -707,10 +755,13 @@
                 if(isReplacingArea) {
                     canvas.defaultCursor = 'crosshair';
                     canvas.discardActiveObject();
-                    canvas.requestRenderAll();
+                    canvas.selection = false;
+                    canvas.forEachObject(o => o.evented = false);
                     logVerbose("Replace Area Mode: Draw a rectangle over the image you want to replace.");
                 } else {
                     canvas.defaultCursor = 'default';
+                    canvas.selection = true;
+                    canvas.forEachObject(o => o.evented = true);
                     if(replaceRect) canvas.remove(replaceRect);
                 }
             };
@@ -766,7 +817,19 @@
                     logVerbose(`Element ${obj.lockMovementX ? 'locked' : 'unlocked'}.`);
                 }
             };
-            document.getElementById('deleteBtn').onclick = deleteSelected;
+            
+            const delFn = () => {
+                const activeObjects = canvas.getActiveObjects();
+                if (activeObjects.length) {
+                    canvas.discardActiveObject();
+                    activeObjects.forEach(function(object) { canvas.remove(object); });
+                    logVerbose(`Deleted ${activeObjects.length} element(s).`);
+                    saveHistory();
+                    saveToLocal();
+                }
+            };
+            document.getElementById('deleteBtn').onclick = delFn;
+            document.getElementById('deleteToolbarBtn').onclick = delFn;
 
             document.getElementById('fontFamily').onchange = (e) => updateTextProp('fontFamily', e.target.value);
             document.getElementById('fontSize').onchange = (e) => updateTextProp('fontSize', parseInt(e.target.value));
@@ -807,19 +870,6 @@
             }
         }
 
-        function deleteSelected() {
-            const activeObjects = canvas.getActiveObjects();
-            if (activeObjects.length) {
-                canvas.discardActiveObject();
-                activeObjects.forEach(function(object) {
-                    canvas.remove(object);
-                });
-                logVerbose(`Deleted ${activeObjects.length} element(s).`);
-                saveHistory();
-                saveToLocal();
-            }
-        }
-
         // --- Keyboard Shortcuts ---
         function setupKeyboardShortcuts() {
             window.addEventListener('keydown', function(e) {
@@ -829,7 +879,7 @@
                 const step = e.shiftKey ? 10 : 1;
 
                 if (e.key === 'Delete' || e.key === 'Backspace') {
-                    deleteSelected();
+                    document.getElementById('deleteBtn').click();
                     e.preventDefault();
                 } else if (e.key === 'Escape') {
                     canvas.discardActiveObject();
@@ -838,6 +888,8 @@
                         isReplacingArea = false;
                         canvas.defaultCursor = 'default';
                         document.getElementById('replaceAreaBtn').classList.remove('active');
+                        canvas.selection = true;
+                        canvas.forEachObject(o => o.evented = true);
                         if(replaceRect) canvas.remove(replaceRect);
                     }
                 } else if (e.ctrlKey && e.key === 'c') {
@@ -995,7 +1047,6 @@
                             const groupObjects = obj.getObjects();
                             const groupMatrix = obj.calcTransformMatrix();
                             groupObjects.forEach(gObj => {
-                                // Calculate absolute position of grouped object
                                 const matrix = fabric.util.multiplyTransformMatrices(groupMatrix, gObj.calcTransformMatrix());
                                 const options = fabric.util.qrDecompose(matrix);
                                 const absObj = fabric.util.object.clone(gObj);
@@ -1080,17 +1131,13 @@
                 alert("An error occurred during export. Check logs.");
             } finally {
                 document.getElementById('exportBtn').innerHTML = '<i class="fas fa-download"></i> Export';
-                setTimeout(() => showLoading(false), 1500); // Keep logs visible briefly
+                setTimeout(() => showLoading(false), 1500);
             }
         }
 
         function hexToRgb(hex) {
             var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-            return result ? {
-                r: parseInt(result[1], 16),
-                g: parseInt(result[2], 16),
-                b: parseInt(result[3], 16)
-            } : { r: 0, g: 0, b: 0 };
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 0, g: 0, b: 0 };
         }
 
         // Run init
