@@ -25,7 +25,9 @@
             --canvas-bg: #2c2c2c;
             --log-bg: #000000;
             --log-text: #00ff00;
-        }[data-theme="light"] {
+        }
+
+        [data-theme="light"] {
             /* Light Theme */
             --bg-color: #f5f5f5;
             --panel-bg: #ffffff;
@@ -326,8 +328,11 @@
                 document.getElementById('exportBtn').disabled = false;
                 document.getElementById('thumbnailsContainer').innerHTML = '';
                 
-                await renderThumbnails();
+                // SUPERIOR FIX: Load the main page FIRST so the user isn't blocked by thumbnails
                 await loadPage(1);
+                
+                // Generate thumbnails asynchronously in the background
+                renderThumbnails();
             } catch (error) {
                 logVerbose(`Failed to load PDF: ${error.message}`, "error");
                 alert("Failed to load PDF. Check logs.");
@@ -336,33 +341,44 @@
         });
 
         async function renderThumbnails() {
-            logVerbose("Generating sidebar thumbnails...");
+            logVerbose("Generating sidebar thumbnails in background...");
             const container = document.getElementById('thumbnailsContainer');
             for (let i = 1; i <= pdfDoc.numPages; i++) {
-                const page = await pdfDoc.getPage(i);
-                const viewport = page.getViewport({ scale: 0.3 });
-                
-                const thumbWrapper = document.createElement('div');
-                thumbWrapper.className = 'thumbnail';
-                thumbWrapper.id = `thumb-${i}`;
-                thumbWrapper.onclick = () => loadPage(i);
+                try {
+                    const page = await pdfDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: 0.2 }); // Smaller scale for faster thumbs
+                    
+                    const thumbWrapper = document.createElement('div');
+                    thumbWrapper.className = 'thumbnail';
+                    thumbWrapper.id = `thumb-${i}`;
+                    if (i === currentPageNum) thumbWrapper.classList.add('active');
+                    thumbWrapper.onclick = () => loadPage(i);
 
-                const thumbCanvas = document.createElement('canvas');
-                const ctx = thumbCanvas.getContext('2d');
-                thumbCanvas.width = viewport.width;
-                thumbCanvas.height = viewport.height;
+                    const thumbCanvas = document.createElement('canvas');
+                    const ctx = thumbCanvas.getContext('2d');
+                    thumbCanvas.width = viewport.width;
+                    thumbCanvas.height = viewport.height;
 
-                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-                
-                const label = document.createElement('div');
-                label.className = 'thumbnail-label';
-                label.innerText = `Page ${i}`;
+                    const renderTask = page.render({ canvasContext: ctx, viewport: viewport });
+                    
+                    // Anti-Hang Timeout: Force resolve if pdf.js gets stuck on a font/stream
+                    await Promise.race([
+                        renderTask.promise,
+                        new Promise((resolve) => setTimeout(resolve, 2000))
+                    ]);
+                    
+                    const label = document.createElement('div');
+                    label.className = 'thumbnail-label';
+                    label.innerText = `Page ${i}`;
 
-                thumbWrapper.appendChild(thumbCanvas);
-                thumbWrapper.appendChild(label);
-                container.appendChild(thumbWrapper);
+                    thumbWrapper.appendChild(thumbCanvas);
+                    thumbWrapper.appendChild(label);
+                    container.appendChild(thumbWrapper);
+                } catch (err) {
+                    logVerbose(`Error generating thumbnail for page ${i}: ${err.message}`, "warn");
+                }
             }
-            logVerbose("Thumbnails generated.");
+            logVerbose("All thumbnails generated.");
         }
 
         async function loadPage(pageNum) {
@@ -386,8 +402,13 @@
                 currentPdfPageWidth = unscaledViewport.width;
                 currentPdfPageHeight = unscaledViewport.height;
 
-                // Render at 2.0x for crispness
-                const renderScale = 2.0; 
+                // Memory Crash Prevention: Cap scale to prevent massive canvas memory issues
+                let renderScale = 2.0; 
+                if (currentPdfPageWidth * renderScale > 4000 || currentPdfPageHeight * renderScale > 4000) {
+                    renderScale = Math.min(4000 / currentPdfPageWidth, 4000 / currentPdfPageHeight);
+                    logVerbose(`Scaled down render resolution to ${renderScale.toFixed(2)}x to prevent memory issues.`);
+                }
+
                 const renderViewport = page.getViewport({ scale: renderScale });
 
                 const tempCanvas = document.createElement('canvas');
@@ -395,42 +416,51 @@
                 tempCanvas.width = renderViewport.width;
                 tempCanvas.height = renderViewport.height;
 
-                logVerbose("Rendering PDF background to temporary canvas...");
-                await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+                logVerbose(`Rendering PDF background (${tempCanvas.width}x${tempCanvas.height})...`);
+                const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
+                
+                // Anti-Hang Timeout: 5 second timeout for rendering to prevent infinite hangs
+                await Promise.race([
+                    renderTask.promise,
+                    new Promise((resolve) => setTimeout(() => {
+                        logVerbose("PDF render task timed out, proceeding with available buffer.", "warn");
+                        resolve();
+                    }, 5000))
+                ]);
 
-                // Bulletproof Fabric Image Loading via DataURL
-                logVerbose("Converting background to Data URL...");
-                const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+                logVerbose("Applying background to Fabric canvas...");
+                const bgImage = new fabric.Image(tempCanvas);
+                bgImage.scale(1 / renderScale);
 
-                canvas.clear();
-
-                fabric.Image.fromURL(dataUrl, (bgImage) => {
-                    if (!bgImage) {
-                        throw new Error("Fabric failed to create image from Data URL.");
-                    }
-                    bgImage.scale(1 / renderScale); // Scale down to match 1:1 coordinate system
-                    
+                // Await the background image setting to guarantee it finishes before hiding loading screen
+                await new Promise((resolve) => {
                     canvas.setBackgroundImage(bgImage, () => {
                         logVerbose("Background applied successfully.");
-                        if (pageCanvases[pageNum]) {
-                            logVerbose("Restoring previous edits for this page...");
-                            canvas.loadFromJSON(pageCanvases[pageNum], () => {
-                                canvas.setBackgroundImage(bgImage, () => {
-                                    canvas.renderAll();
-                                    if (!pageHistories[pageNum]) saveHistory();
-                                    fitToScreen();
-                                    showLoading(false);
-                                });
-                            });
-                        } else {
-                            if (!pageHistories[pageNum]) saveHistory();
-                            fitToScreen();
-                            showLoading(false);
-                        }
+                        resolve();
                     });
                 });
+
+                if (pageCanvases[pageNum]) {
+                    logVerbose("Restoring previous edits for this page...");
+                    await new Promise((resolve) => {
+                        canvas.loadFromJSON(pageCanvases[pageNum], () => {
+                            // loadFromJSON clears the background, so we must re-apply it
+                            canvas.setBackgroundImage(bgImage, () => {
+                                canvas.renderAll();
+                                resolve();
+                            });
+                        });
+                    });
+                } else {
+                    canvas.renderAll();
+                }
+
+                if (!pageHistories[pageNum]) saveHistory();
+                fitToScreen();
+
             } catch (error) {
                 logVerbose(`Error loading page ${pageNum}: ${error.message}`, "error");
+            } finally {
                 showLoading(false);
             }
         }
