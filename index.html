@@ -3,307 +3,769 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro PDF Editor</title>
+    <title>Advanced PDF Editor</title>
     
+    <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
     <style>
         :root {
-            /* Default Black & White Theme */
+            /* Dark Theme (Default) */
             --bg-color: #121212;
-            --surface-color: #1e1e1e;
-            --border-color: #333;
-            --text-color: #f5f5f5;
+            --panel-bg: #1e1e1e;
+            --toolbar-bg: #000000;
+            --text-color: #ffffff;
+            --border-color: #333333;
             --accent-color: #ffffff;
-            --canvas-bg: #2a2a2a;
+            --accent-text: #000000;
+            --hover-bg: #2a2a2a;
+            --canvas-bg: #2c2c2c;
         }
 
         [data-theme="light"] {
+            /* Light Theme */
             --bg-color: #f5f5f5;
-            --surface-color: #ffffff;
-            --border-color: #e0e0e0;
-            --text-color: #121212;
+            --panel-bg: #ffffff;
+            --toolbar-bg: #e0e0e0;
+            --text-color: #000000;
+            --border-color: #cccccc;
             --accent-color: #000000;
-            --canvas-bg: #e0e0e0;
+            --accent-text: #ffffff;
+            --hover-bg: #e8e8e8;
+            --canvas-bg: #d0d0d0;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-            transition: background-color 0.3s, color 0.3s;
-        }
-
-        /* Top Navbar */
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 20px;
-            background-color: var(--surface-color);
-            border-bottom: 1px solid var(--border-color);
-            height: 60px;
-        }
-
-        .btn {
-            background: transparent;
-            color: var(--text-color);
-            border: 1px solid var(--border-color);
-            padding: 8px 16px;
-            cursor: pointer;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-
-        .btn:hover { border-color: var(--accent-color); }
         
-        .btn-primary { background: var(--text-color); color: var(--bg-color); font-weight: bold; }
-        .btn-primary:hover { opacity: 0.8; }
+        body { background-color: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-        /* Main Workspace */
-        .workspace {
-            display: flex;
-            flex: 1;
-            height: calc(100vh - 60px);
-        }
+        /* Toolbar */
+        .toolbar { background-color: var(--toolbar-bg); padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; }
+        .toolbar-group { display: flex; gap: 5px; border-right: 1px solid var(--border-color); padding-right: 15px; align-items: center; }
+        .toolbar-group:last-child { border-right: none; }
+        
+        button, label.btn { background: transparent; color: var(--text-color); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
+        button:hover, label.btn:hover { background: var(--hover-bg); }
+        button.active { background: var(--accent-color); color: var(--accent-text); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        input[type="file"] { display: none; }
 
-        /* Sidebar Tools & Thumbnails */
-        .sidebar {
-            width: 250px;
-            background-color: var(--surface-color);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            padding: 15px;
-            gap: 15px;
-            overflow-y: auto;
-        }
+        /* Main Layout */
+        .main-container { display: flex; flex: 1; overflow: hidden; }
 
-        .tool-group { display: flex; flex-direction: column; gap: 8px; }
-        .tool-group h4 { font-size: 12px; text-transform: uppercase; color: gray; margin-bottom: 5px; }
+        /* Sidebars */
+        .sidebar { width: 250px; background-color: var(--panel-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; }
+        .sidebar-right { border-right: none; border-left: 1px solid var(--border-color); padding: 15px; }
+        
+        .panel-section { margin-bottom: 20px; }
+        .panel-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; color: #888; }
+        
+        .prop-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .prop-row label { font-size: 12px; width: 60px; }
+        select, input[type="number"], input[type="color"] { width: 100%; padding: 5px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; }
+        
+        /* Thumbnails */
+        .thumbnail { margin: 10px; border: 2px solid transparent; cursor: pointer; position: relative; }
+        .thumbnail.active { border-color: var(--accent-color); }
+        .thumbnail canvas { width: 100%; display: block; background: white; }
+        .thumbnail-label { text-align: center; font-size: 12px; padding: 5px; }
 
         /* Canvas Area */
-        .canvas-container-wrapper {
-            flex: 1;
-            background-color: var(--canvas-bg);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: auto;
-            position: relative;
-        }
+        .canvas-wrapper { flex: 1; background-color: var(--canvas-bg); position: relative; overflow: hidden; display: flex; justify-content: center; align-items: center; outline: none; }
+        .canvas-container { box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        
+        /* Grid Overlay */
+        .grid-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background-size: 20px 20px; background-image: linear-gradient(to right, rgba(128,128,128,0.2) 1px, transparent 1px), linear-gradient(to bottom, rgba(128,128,128,0.2) 1px, transparent 1px); display: none; }
+        .grid-overlay.active { display: block; }
 
-        /* Hide default file input */
-        #pdf-upload { display: none; }
+        /* Utilities */
+        .icon-btn-group { display: flex; gap: 2px; }
+        .icon-btn-group button { padding: 6px 8px; }
     </style>
 </head>
 <body>
 
-    <header>
-        <div>
-            <h2>PDF Editor</h2>
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-group">
+            <label class="btn"><i class="fas fa-folder-open"></i> Open PDF<input type="file" id="fileInput" accept="application/pdf"></label>
+            <button id="exportBtn" disabled><i class="fas fa-download"></i> Export</button>
         </div>
-        <div style="display: flex; gap: 10px;">
-            <button class="btn" id="theme-toggle">Toggle Light Mode</button>
-            <button class="btn" id="undo-btn">Undo (Ctrl+Z)</button>
-            <button class="btn" id="redo-btn">Redo (Ctrl+Y)</button>
-            <label class="btn" for="pdf-upload">Load PDF</label>
-            <input type="file" id="pdf-upload" accept="application/pdf" />
-            <button class="btn btn-primary" id="export-btn">Export PDF</button>
+        <div class="toolbar-group">
+            <button id="undoBtn" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
+            <button id="redoBtn" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
         </div>
-    </header>
+        <div class="toolbar-group">
+            <button id="addTextBtn"><i class="fas fa-font"></i> Add Text</button>
+            <label class="btn"><i class="fas fa-image"></i> Add Image<input type="file" id="imageInput" accept="image/*"></label>
+        </div>
+        <div class="toolbar-group">
+            <button id="zoomOutBtn"><i class="fas fa-search-minus"></i></button>
+            <span id="zoomLevel" style="font-size: 14px; width: 40px; text-align: center;">100%</span>
+            <button id="zoomInBtn"><i class="fas fa-search-plus"></i></button>
+            <button id="fitScreenBtn"><i class="fas fa-expand"></i> Fit</button>
+        </div>
+        <div class="toolbar-group">
+            <button id="gridToggleBtn" title="Toggle Grid"><i class="fas fa-border-all"></i> Grid</button>
+            <button id="snapToggleBtn" class="active" title="Snap to Grid/Elements"><i class="fas fa-magnet"></i> Snap</button>
+            <button id="targetSnapBtn" title="Target Snap Mode"><i class="fas fa-crosshairs"></i> Target Snap</button>
+        </div>
+        <div class="toolbar-group" style="margin-left: auto;">
+            <button id="themeToggleBtn"><i class="fas fa-adjust"></i> Theme</button>
+        </div>
+    </div>
 
-    <div class="workspace">
-        <aside class="sidebar">
-            <div class="tool-group">
-                <h4>Tools</h4>
-                <button class="btn" id="add-text-btn">+ Add Text</button>
-                <button class="btn" id="pan-mode-btn">Pan Mode (Space)</button>
-                <button class="btn" id="select-mode-btn">Select Mode</button>
-            </div>
-            <div class="tool-group">
-                <h4>Z-Index</h4>
-                <button class="btn" id="bring-front-btn">Bring to Front</button>
-                <button class="btn" id="send-back-btn">Send to Back</button>
-            </div>
-            <div class="tool-group">
-                <h4>Pages</h4>
-                <div id="thumbnails-container" style="min-height: 200px; border: 1px dashed var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 12px; color: gray;">
-                    No pages loaded
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Left Sidebar (Pages) -->
+        <div class="sidebar" id="thumbnailsContainer">
+            <div style="padding: 10px; text-align: center; color: #888; font-size: 12px;">Pages will appear here</div>
+        </div>
+
+        <!-- Canvas Area -->
+        <div class="canvas-wrapper" id="canvasWrapper" tabindex="0">
+            <div class="grid-overlay" id="gridOverlay"></div>
+            <canvas id="pdfCanvas"></canvas>
+        </div>
+
+        <!-- Right Sidebar (Properties) -->
+        <div class="sidebar sidebar-right">
+            <div class="panel-section">
+                <h3>Alignment</h3>
+                <div class="icon-btn-group">
+                    <button id="alignCenterH" title="Center Horizontally"><i class="fas fa-arrows-alt-h"></i></button>
+                    <button id="alignCenterV" title="Center Vertically"><i class="fas fa-arrows-alt-v"></i></button>
                 </div>
             </div>
-        </aside>
 
-        <main class="canvas-container-wrapper" id="canvas-wrapper">
-            <canvas id="editor-canvas"></canvas>
-        </main>
+            <div class="panel-section">
+                <h3>Arrange (Z-Index)</h3>
+                <div class="icon-btn-group">
+                    <button id="bringFrontBtn" title="Bring to Front"><i class="fas fa-angle-double-up"></i></button>
+                    <button id="bringForwardBtn" title="Bring Forward"><i class="fas fa-angle-up"></i></button>
+                    <button id="sendBackwardBtn" title="Send Backward"><i class="fas fa-angle-down"></i></button>
+                    <button id="sendBackBtn" title="Send to Back"><i class="fas fa-angle-double-down"></i></button>
+                </div>
+            </div>
+
+            <div class="panel-section" id="textProperties" style="display: none;">
+                <h3>Text Formatting</h3>
+                <div class="prop-row">
+                    <select id="fontFamily">
+                        <option value="Helvetica">Helvetica (Detected)</option>
+                        <option value="Times New Roman">Times New Roman (Detected)</option>
+                        <option value="Courier">Courier</option>
+                        <option value="Arial">Arial</option>
+                    </select>
+                </div>
+                <div class="prop-row">
+                    <label>Size</label>
+                    <input type="number" id="fontSize" value="16" min="1">
+                </div>
+                <div class="prop-row">
+                    <label>Color</label>
+                    <input type="color" id="textColor" value="#000000">
+                </div>
+                <div class="icon-btn-group" style="margin-top: 10px;">
+                    <button id="textAlignLeft"><i class="fas fa-align-left"></i></button>
+                    <button id="textAlignCenter"><i class="fas fa-align-center"></i></button>
+                    <button id="textAlignRight"><i class="fas fa-align-right"></i></button>
+                    <button id="textAlignJustify"><i class="fas fa-align-justify"></i></button>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <h3>Element</h3>
+                <button id="lockBtn" style="width: 100%; justify-content: center;"><i class="fas fa-lock"></i> Lock/Unlock</button>
+                <button id="deleteBtn" style="width: 100%; justify-content: center; margin-top: 5px; color: #ff4444; border-color: #ff4444;"><i class="fas fa-trash"></i> Delete</button>
+            </div>
+        </div>
     </div>
 
     <script>
-        // --- 1. SETUP & STATE ---
+        // --- Configuration & State ---
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         
-        const AppState = {
-            currentPdfDoc: null,
-            pdfBytes: null,
-            currentPage: 1,
-            history: [],
-            historyIndex: -1,
-            isPanning: false
-        };
+        let pdfDoc = null;
+        let currentPageNum = 1;
+        let canvas;
+        let pdfBytesOriginal = null;
+        let pageCanvases = {}; // Store fabric JSON state per page
+        
+        // History (Undo/Redo)
+        let history =[];
+        let historyIndex = -1;
+        let isHistoryAction = false;
 
-        // Initialize Fabric.js
-        const canvas = new fabric.Canvas('editor-canvas', {
-            width: 800,
-            height: 1050, // Standard A4 ratio
-            backgroundColor: '#ffffff',
-            preserveObjectStacking: true // Important for Z-index management
-        });
+        // Modes & Toggles
+        let isPanning = false;
+        let snapEnabled = true;
+        let targetSnapMode = false;
+        let targetElement = null;
+        const GRID_SIZE = 20;
 
-        // --- 2. THEME MANAGEMENT ---
-        const themeToggle = document.getElementById('theme-toggle');
-        themeToggle.addEventListener('click', () => {
-            const body = document.body;
-            if (body.getAttribute('data-theme') === 'light') {
-                body.removeAttribute('data-theme');
-                themeToggle.textContent = 'Toggle Light Mode';
-            } else {
-                body.setAttribute('data-theme', 'light');
-                themeToggle.textContent = 'Toggle Dark Mode';
-            }
-        });
+        // --- Initialization ---
+        function init() {
+            canvas = new fabric.Canvas('pdfCanvas', {
+                preserveObjectStacking: true,
+                selection: true
+            });
 
-        // --- 3. FILE INGESTION (PDF.js) ---
-        document.getElementById('pdf-upload').addEventListener('change', async (e) => {
+            setupEventListeners();
+            setupKeyboardShortcuts();
+            setupCanvasEvents();
+            loadAutoSave();
+        }
+
+        // --- PDF Loading & Rendering ---
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             const arrayBuffer = await file.arrayBuffer();
-            AppState.pdfBytes = arrayBuffer; // Save for pdf-lib export later
+            pdfBytesOriginal = arrayBuffer;
             
-            const loadingTask = pdfjsLib.getDocument(new Uint8Array(arrayBuffer));
-            AppState.currentPdfDoc = await loadingTask.promise;
+            pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            document.getElementById('exportBtn').disabled = false;
             
-            renderPage(1);
+            pageCanvases = {};
+            document.getElementById('thumbnailsContainer').innerHTML = '';
+            
+            await renderThumbnails();
+            await loadPage(1);
+            saveToLocal();
         });
 
-        async function renderPage(pageNum) {
-            const page = await AppState.currentPdfDoc.getPage(pageNum);
-            const scale = 1.5;
-            const viewport = page.getViewport({ scale });
+        async function renderThumbnails() {
+            const container = document.getElementById('thumbnailsContainer');
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+                const page = await pdfDoc.getPage(i);
+                const viewport = page.getViewport({ scale: 0.3 });
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'thumbnail';
+                wrapper.id = `thumb-${i}`;
+                wrapper.onclick = () => loadPage(i);
 
-            // Create an off-screen canvas to render the PDF page via PDF.js
-            const offScreenCanvas = document.createElement('canvas');
-            const context = offScreenCanvas.getContext('2d');
-            offScreenCanvas.height = viewport.height;
-            offScreenCanvas.width = viewport.width;
+                const thumbCanvas = document.createElement('canvas');
+                const ctx = thumbCanvas.getContext('2d');
+                thumbCanvas.width = viewport.width;
+                thumbCanvas.height = viewport.height;
 
-            await page.render({ canvasContext: context, viewport: viewport }).promise;
+                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                
+                const label = document.createElement('div');
+                label.className = 'thumbnail-label';
+                label.innerText = `Page ${i}`;
 
-            // Set Fabric canvas dimensions to match PDF
-            canvas.setWidth(viewport.width);
-            canvas.setHeight(viewport.height);
-
-            // Set the PDF render as the Fabric background
-            fabric.Image.fromURL(offScreenCanvas.toDataURL(), (img) => {
-                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
-            });
-            
-            saveHistory(); // Initial state
+                wrapper.appendChild(thumbCanvas);
+                wrapper.appendChild(label);
+                container.appendChild(wrapper);
+            }
         }
 
-        // --- 4. FABRIC.JS CAPABILITIES (Tools & Z-Index) ---
-        document.getElementById('add-text-btn').addEventListener('click', () => {
-            const text = new fabric.IText('Double click to edit', {
-                left: canvas.width / 2 - 50,
-                top: canvas.height / 2,
-                fontFamily: 'Helvetica',
-                fill: '#000000',
-                fontSize: 24,
-                editable: true
-            });
-            canvas.add(text);
-            canvas.setActiveObject(text);
-            saveHistory();
-        });
+        async function loadPage(pageNum) {
+            // Save current page state before switching
+            if (pdfDoc && canvas.getObjects().length > 0) {
+                pageCanvases[currentPageNum] = canvas.toJSON();
+            }
 
-        // Z-Index Management
-        document.getElementById('bring-front-btn').addEventListener('click', () => {
-            const activeObj = canvas.getActiveObject();
-            if (activeObj) canvas.bringToFront(activeObj);
-            saveHistory();
-        });
+            currentPageNum = pageNum;
+            
+            // Update active thumbnail
+            document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
+            document.getElementById(`thumb-${pageNum}`).classList.add('active');
 
-        document.getElementById('send-back-btn').addEventListener('click', () => {
-            const activeObj = canvas.getActiveObject();
-            if (activeObj) canvas.sendToBack(activeObj);
-            saveHistory();
-        });
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 }); // High res for editing
 
-        // Keyboard Actions (Delete)
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'Delete') {
-                const activeObjects = canvas.getActiveObjects();
-                if (activeObjects.length) {
-                    canvas.discardActiveObject();
-                    activeObjects.forEach(obj => canvas.remove(obj));
-                    saveHistory();
+            // Render PDF page to a temporary canvas to use as background
+            const tempCanvas = document.createElement('canvas');
+            const ctx = tempCanvas.getContext('2d');
+            tempCanvas.width = viewport.width;
+            tempCanvas.height = viewport.height;
+
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+            canvas.setWidth(viewport.width);
+            canvas.setHeight(viewport.height);
+            canvas.clear();
+
+            fabric.Image.fromURL(tempCanvas.toDataURL(), (img) => {
+                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+                
+                // Restore objects if they exist for this page
+                if (pageCanvases[pageNum]) {
+                    canvas.loadFromJSON(pageCanvases[pageNum], () => {
+                        canvas.renderAll();
+                        saveHistory();
+                    });
+                } else {
+                    saveHistory(); // Initial state
                 }
+                fitToScreen();
+            });
+        }
+
+        // --- Canvas Navigation (Zoom & Pan) ---
+        const wrapper = document.getElementById('canvasWrapper');
+        
+        canvas.on('mouse:wheel', function(opt) {
+            var delta = opt.e.deltaY;
+            var zoom = canvas.getZoom();
+            zoom *= 0.999 ** delta;
+            if (zoom > 5) zoom = 5;
+            if (zoom < 0.1) zoom = 0.1;
+            canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+            opt.e.preventDefault();
+            opt.e.stopPropagation();
+            updateZoomLabel();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && e.target === document.body) {
+                isPanning = true;
+                canvas.defaultCursor = 'grab';
             }
         });
 
-        // --- 5. UNDO/REDO STACK (Placeholder architecture) ---
-        // True history requires serializing canvas state (canvas.toJSON())
-        function saveHistory() {
-            // Implementation: Push JSON state to AppState.history
-            console.log("State saved to history.");
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                isPanning = false;
+                canvas.defaultCursor = 'default';
+            }
+        });
+
+        canvas.on('mouse:down', function(opt) {
+            if (isPanning) {
+                this.isDragging = true;
+                this.selection = false;
+                this.lastPosX = opt.e.clientX;
+                this.lastPosY = opt.e.clientY;
+            } else if (targetSnapMode && opt.target) {
+                targetElement = opt.target;
+                alert('Target element selected for snapping.');
+                document.getElementById('targetSnapBtn').classList.remove('active');
+                targetSnapMode = false;
+            }
+        });
+
+        canvas.on('mouse:move', function(opt) {
+            if (this.isDragging) {
+                var e = opt.e;
+                var vpt = this.viewportTransform;
+                vpt[4] += e.clientX - this.lastPosX;
+                vpt[5] += e.clientY - this.lastPosY;
+                this.requestRenderAll();
+                this.lastPosX = e.clientX;
+                this.lastPosY = e.clientY;
+            }
+        });
+
+        canvas.on('mouse:up', function(opt) {
+            this.isDragging = false;
+            this.selection = true;
+        });
+
+        function fitToScreen() {
+            const padding = 40;
+            const containerWidth = wrapper.clientWidth - padding;
+            const containerHeight = wrapper.clientHeight - padding;
+            const scaleX = containerWidth / canvas.getWidth();
+            const scaleY = containerHeight / canvas.getHeight();
+            const scale = Math.min(scaleX, scaleY);
+            
+            canvas.setZoom(scale);
+            canvas.viewportTransform[4] = (wrapper.clientWidth - canvas.getWidth() * scale) / 2;
+            canvas.viewportTransform[5] = (wrapper.clientHeight - canvas.getHeight() * scale) / 2;
+            canvas.requestRenderAll();
+            updateZoomLabel();
         }
 
-        // --- 6. EXPORTING (pdf-lib) ---
-        document.getElementById('export-btn').addEventListener('click', async () => {
-            if (!AppState.pdfBytes) return alert("Load a PDF first.");
-            
-            // 1. Load original PDF bytes with pdf-lib
-            const pdfDoc = await PDFLib.PDFDocument.load(AppState.pdfBytes);
-            const pages = pdfDoc.getPages();
-            const firstPage = pages[0];
+        function updateZoomLabel() {
+            document.getElementById('zoomLevel').innerText = Math.round(canvas.getZoom() * 100) + '%';
+        }
 
-            // 2. Extract Fabric.js objects
-            const objects = canvas.getObjects();
-            
-            // 3. Map Fabric objects to pdf-lib draw commands
-            objects.forEach(obj => {
-                if (obj.type === 'i-text') {
-                    // Note: Y-axis is inverted in pdf-lib vs canvas!
-                    firstPage.drawText(obj.text, {
-                        x: obj.left,
-                        y: firstPage.getHeight() - obj.top - obj.fontSize, 
-                        size: obj.fontSize,
-                        color: PDFLib.rgb(0, 0, 0) // Parse actual color in production
+        document.getElementById('zoomInBtn').onclick = () => { canvas.setZoom(canvas.getZoom() * 1.2); updateZoomLabel(); };
+        document.getElementById('zoomOutBtn').onclick = () => { canvas.setZoom(canvas.getZoom() / 1.2); updateZoomLabel(); };
+        document.getElementById('fitScreenBtn').onclick = fitToScreen;
+
+        // --- Element Manipulation & Snapping ---
+        function setupCanvasEvents() {
+            canvas.on('object:moving', function(options) {
+                const obj = options.target;
+                
+                if (targetElement && targetElement !== obj) {
+                    // Target Snapping
+                    const targetCenter = targetElement.getCenterPoint();
+                    const objCenter = obj.getCenterPoint();
+                    
+                    if (Math.abs(objCenter.x - targetCenter.x) < 20) {
+                        obj.set({ left: targetCenter.x - (obj.width * obj.scaleX)/2 });
+                    }
+                    if (Math.abs(objCenter.y - targetCenter.y) < 20) {
+                        obj.set({ top: targetCenter.y - (obj.height * obj.scaleY)/2 });
+                    }
+                } else if (snapEnabled) {
+                    // Grid Snapping
+                    obj.set({
+                        left: Math.round(obj.left / GRID_SIZE) * GRID_SIZE,
+                        top: Math.round(obj.top / GRID_SIZE) * GRID_SIZE
                     });
                 }
             });
 
-            // 4. Save and trigger download
-            const pdfBytes = await pdfDoc.save();
-            const blob = new Blob([pdfBytes], { type: "application/pdf" });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = "edited_document.pdf";
-            link.click();
-        });
+            canvas.on('selection:created', updatePropertiesPanel);
+            canvas.on('selection:updated', updatePropertiesPanel);
+            canvas.on('selection:cleared', () => {
+                document.getElementById('textProperties').style.display = 'none';
+            });
 
-        /* TODO: Snapping System
-           Requires hooking into canvas.on('object:moving', function(e) { ... })
-           and calculating proximity to other objects' bounding rects.
-        */
+            // History triggers
+            canvas.on('object:modified', () => { saveHistory(); saveToLocal(); });
+            canvas.on('object:added', () => { if(!isHistoryAction) { saveHistory(); saveToLocal(); }});
+            canvas.on('object:removed', () => { if(!isHistoryAction) { saveHistory(); saveToLocal(); }});
+        }
+
+        // --- UI Event Listeners ---
+        function setupEventListeners() {
+            // Theme Toggle
+            document.getElementById('themeToggleBtn').onclick = () => {
+                const body = document.body;
+                if (body.getAttribute('data-theme') === 'light') {
+                    body.removeAttribute('data-theme');
+                } else {
+                    body.setAttribute('data-theme', 'light');
+                }
+            };
+
+            // Grid Toggle
+            document.getElementById('gridToggleBtn').onclick = (e) => {
+                const overlay = document.getElementById('gridOverlay');
+                overlay.classList.toggle('active');
+                e.target.classList.toggle('active');
+            };
+
+            // Snap Toggles
+            document.getElementById('snapToggleBtn').onclick = (e) => {
+                snapEnabled = !snapEnabled;
+                e.target.classList.toggle('active');
+            };
+
+            document.getElementById('targetSnapBtn').onclick = (e) => {
+                targetSnapMode = !targetSnapMode;
+                e.target.classList.toggle('active');
+                if(targetSnapMode) alert('Click an element to set it as the snap target.');
+            };
+
+            // Add Elements
+            document.getElementById('addTextBtn').onclick = () => {
+                const text = new fabric.IText('Double click to edit', {
+                    left: 100, top: 100, fontFamily: 'Helvetica', fontSize: 20, fill: '#000000'
+                });
+                canvas.add(text);
+                canvas.setActiveObject(text);
+            };
+
+            document.getElementById('imageInput').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = function(f) {
+                    const data = f.target.result;
+                    fabric.Image.fromURL(data, function(img) {
+                        img.scaleToWidth(200);
+                        canvas.add(img);
+                        canvas.setActiveObject(img);
+                    });
+                };
+                reader.readAsDataURL(file);
+            });
+
+            // Alignment
+            document.getElementById('alignCenterH').onclick = () => {
+                const obj = canvas.getActiveObject();
+                if(obj) { obj.centerH(); obj.setCoords(); canvas.renderAll(); saveHistory(); }
+            };
+            document.getElementById('alignCenterV').onclick = () => {
+                const obj = canvas.getActiveObject();
+                if(obj) { obj.centerV(); obj.setCoords(); canvas.renderAll(); saveHistory(); }
+            };
+
+            // Z-Index
+            document.getElementById('bringFrontBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringToFront(obj); saveHistory(); }};
+            document.getElementById('bringForwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringForward(obj); saveHistory(); }};
+            document.getElementById('sendBackwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendBackwards(obj); saveHistory(); }};
+            document.getElementById('sendBackBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendToBack(obj); saveHistory(); }};
+
+            // Locking & Deleting
+            document.getElementById('lockBtn').onclick = () => {
+                const obj = canvas.getActiveObject();
+                if(obj) {
+                    obj.lockMovementX = !obj.lockMovementX;
+                    obj.lockMovementY = !obj.lockMovementY;
+                    obj.lockRotation = !obj.lockRotation;
+                    obj.lockScalingX = !obj.lockScalingX;
+                    obj.lockScalingY = !obj.lockScalingY;
+                    obj.hasControls = !obj.lockMovementX;
+                    canvas.renderAll();
+                }
+            };
+            document.getElementById('deleteBtn').onclick = deleteSelected;
+
+            // Text Formatting
+            document.getElementById('fontFamily').onchange = (e) => updateTextProp('fontFamily', e.target.value);
+            document.getElementById('fontSize').onchange = (e) => updateTextProp('fontSize', parseInt(e.target.value));
+            document.getElementById('textColor').onchange = (e) => updateTextProp('fill', e.target.value);
+            document.getElementById('textAlignLeft').onclick = () => updateTextProp('textAlign', 'left');
+            document.getElementById('textAlignCenter').onclick = () => updateTextProp('textAlign', 'center');
+            document.getElementById('textAlignRight').onclick = () => updateTextProp('textAlign', 'right');
+            document.getElementById('textAlignJustify').onclick = () => updateTextProp('textAlign', 'justify');
+
+            // Undo/Redo
+            document.getElementById('undoBtn').onclick = undo;
+            document.getElementById('redoBtn').onclick = redo;
+
+            // Export
+            document.getElementById('exportBtn').onclick = exportPDF;
+        }
+
+        function updatePropertiesPanel() {
+            const obj = canvas.getActiveObject();
+            if (!obj) return;
+
+            if (obj.type === 'i-text' || obj.type === 'text') {
+                document.getElementById('textProperties').style.display = 'block';
+                document.getElementById('fontFamily').value = obj.fontFamily || 'Helvetica';
+                document.getElementById('fontSize').value = obj.fontSize || 16;
+                document.getElementById('textColor').value = obj.fill || '#000000';
+            } else {
+                document.getElementById('textProperties').style.display = 'none';
+            }
+        }
+
+        function updateTextProp(prop, value) {
+            const obj = canvas.getActiveObject();
+            if (obj && (obj.type === 'i-text' || obj.type === 'text')) {
+                obj.set(prop, value);
+                canvas.renderAll();
+                saveHistory();
+            }
+        }
+
+        function deleteSelected() {
+            const activeObjects = canvas.getActiveObjects();
+            if (activeObjects.length) {
+                canvas.discardActiveObject();
+                activeObjects.forEach(function(object) {
+                    canvas.remove(object);
+                });
+                saveHistory();
+            }
+        }
+
+        // --- Keyboard Shortcuts ---
+        function setupKeyboardShortcuts() {
+            window.addEventListener('keydown', function(e) {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || canvas.getActiveObject()?.isEditing) return;
+
+                const obj = canvas.getActiveObject();
+                const step = e.shiftKey ? 10 : 1;
+
+                if (e.key === 'Delete' || e.key === 'Backspace') {
+                    deleteSelected();
+                    e.preventDefault();
+                } else if (e.key === 'Escape') {
+                    canvas.discardActiveObject();
+                    canvas.renderAll();
+                } else if (e.ctrlKey && e.key === 'c') {
+                    if(obj) obj.clone((cloned) => { window.clipboard = cloned; });
+                } else if (e.ctrlKey && e.key === 'v') {
+                    if(window.clipboard) {
+                        window.clipboard.clone((clonedObj) => {
+                            canvas.discardActiveObject();
+                            clonedObj.set({ left: clonedObj.left + 10, top: clonedObj.top + 10, evented: true });
+                            if (clonedObj.type === 'activeSelection') {
+                                clonedObj.canvas = canvas;
+                                clonedObj.forEachObject((obj) => canvas.add(obj));
+                                clonedObj.setCoords();
+                            } else {
+                                canvas.add(clonedObj);
+                            }
+                            window.clipboard.top += 10; window.clipboard.left += 10;
+                            canvas.setActiveObject(clonedObj);
+                            canvas.requestRenderAll();
+                            saveHistory();
+                        });
+                    }
+                } else if (e.ctrlKey && e.key === 'z') {
+                    undo();
+                } else if (e.ctrlKey && e.key === 'y') {
+                    redo();
+                } else if (obj &&['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                    e.preventDefault();
+                    if (e.key === 'ArrowUp') obj.top -= step;
+                    if (e.key === 'ArrowDown') obj.top += step;
+                    if (e.key === 'ArrowLeft') obj.left -= step;
+                    if (e.key === 'ArrowRight') obj.left += step;
+                    
+                    if(snapEnabled) {
+                        obj.left = Math.round(obj.left / GRID_SIZE) * GRID_SIZE;
+                        obj.top = Math.round(obj.top / GRID_SIZE) * GRID_SIZE;
+                    }
+                    obj.setCoords();
+                    canvas.renderAll();
+                    saveHistory();
+                }
+            });
+        }
+
+        // --- Undo / Redo Stack ---
+        function saveHistory() {
+            if (isHistoryAction) return;
+            const json = canvas.toJSON();
+            history = history.slice(0, historyIndex + 1);
+            history.push(json);
+            historyIndex++;
+        }
+
+        function undo() {
+            if (historyIndex > 0) {
+                isHistoryAction = true;
+                historyIndex--;
+                canvas.loadFromJSON(history[historyIndex], () => {
+                    canvas.renderAll();
+                    isHistoryAction = false;
+                    saveToLocal();
+                });
+            }
+        }
+
+        function redo() {
+            if (historyIndex < history.length - 1) {
+                isHistoryAction = true;
+                historyIndex++;
+                canvas.loadFromJSON(history[historyIndex], () => {
+                    canvas.renderAll();
+                    isHistoryAction = false;
+                    saveToLocal();
+                });
+            }
+        }
+
+        // --- Local Auto-Save ---
+        function saveToLocal() {
+            if(pdfDoc) {
+                pageCanvases[currentPageNum] = canvas.toJSON();
+                localStorage.setItem('pdf_editor_draft', JSON.stringify(pageCanvases));
+            }
+        }
+
+        function loadAutoSave() {
+            const draft = localStorage.getItem('pdf_editor_draft');
+            if (draft) {
+                // Note: In a full app, we'd also need to store the original PDF ArrayBuffer in IndexedDB.
+                // For this single-file prototype, we just notify the user that a draft exists.
+                console.log("Draft found in localStorage. Please upload the original PDF to apply the draft.");
+            }
+        }
+
+        // --- Export PDF (pdf-lib) ---
+        async function exportPDF() {
+            if (!pdfBytesOriginal) return;
+            
+            document.getElementById('exportBtn').innerText = "Exporting...";
+            
+            try {
+                // Save current page state
+                pageCanvases[currentPageNum] = canvas.toJSON();
+
+                const pdfDocLib = await PDFLib.PDFDocument.load(pdfBytesOriginal);
+                const pages = pdfDocLib.getPages();
+
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    const pageData = pageCanvases[i];
+                    if (!pageData) continue;
+
+                    const pdfPage = pages[i - 1];
+                    const { width, height } = pdfPage.getSize();
+                    
+                    // Create a temporary fabric canvas to parse the JSON without rendering to DOM
+                    const tempCanvas = new fabric.StaticCanvas(null, { width: width, height: height });
+                    await new Promise(resolve => tempCanvas.loadFromJSON(pageData, resolve));
+                    
+                    const objects = tempCanvas.getObjects();
+                    
+                    for (const obj of objects) {
+                        // PDF-lib uses bottom-left origin, Fabric uses top-left
+                        const yPos = height - obj.top - (obj.height * obj.scaleY);
+
+                        if (obj.type === 'i-text' || obj.type === 'text') {
+                            // Map standard fonts
+                            let font;
+                            if(obj.fontFamily === 'Times New Roman') font = await pdfDocLib.embedFont(PDFLib.StandardFonts.TimesRoman);
+                            else if(obj.fontFamily === 'Courier') font = await pdfDocLib.embedFont(PDFLib.StandardFonts.Courier);
+                            else font = await pdfDocLib.embedFont(PDFLib.StandardFonts.Helvetica);
+
+                            const rgb = hexToRgb(obj.fill || '#000000');
+
+                            pdfPage.drawText(obj.text, {
+                                x: obj.left,
+                                y: height - obj.top - obj.fontSize, // Adjust for baseline
+                                size: obj.fontSize,
+                                font: font,
+                                color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255)
+                            });
+                        } else if (obj.type === 'image') {
+                            const imgData = obj.getSrc();
+                            let embeddedImage;
+                            if (imgData.includes('image/png')) {
+                                embeddedImage = await pdfDocLib.embedPng(imgData);
+                            } else if (imgData.includes('image/jpeg')) {
+                                embeddedImage = await pdfDocLib.embedJpg(imgData);
+                            }
+                            
+                            if (embeddedImage) {
+                                pdfPage.drawImage(embeddedImage, {
+                                    x: obj.left,
+                                    y: yPos,
+                                    width: obj.width * obj.scaleX,
+                                    height: obj.height * obj.scaleY
+                                });
+                            }
+                        }
+                    }
+                }
+
+                const pdfBytes = await pdfDocLib.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'edited_document.pdf';
+                link.click();
+
+            } catch (error) {
+                console.error("Export failed:", error);
+                alert("An error occurred during export.");
+            } finally {
+                document.getElementById('exportBtn').innerHTML = '<i class="fas fa-download"></i> Export';
+            }
+        }
+
+        function hexToRgb(hex) {
+            var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        }
+
+        // Run init
+        init();
     </script>
 </body>
 </html>
