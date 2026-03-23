@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro PDF Editor</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+
+    <style>
+        :root {
+            /* Default Black & White Theme */
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --border-color: #333;
+            --text-color: #f5f5f5;
+            --accent-color: #ffffff;
+            --canvas-bg: #2a2a2a;
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f5f5f5;
+            --surface-color: #ffffff;
+            --border-color: #e0e0e0;
+            --text-color: #121212;
+            --accent-color: #000000;
+            --canvas-bg: #e0e0e0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Top Navbar */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            height: 60px;
+        }
+
+        .btn {
+            background: transparent;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover { border-color: var(--accent-color); }
+        
+        .btn-primary { background: var(--text-color); color: var(--bg-color); font-weight: bold; }
+        .btn-primary:hover { opacity: 0.8; }
+
+        /* Main Workspace */
+        .workspace {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 60px);
+        }
+
+        /* Sidebar Tools & Thumbnails */
+        .sidebar {
+            width: 250px;
+            background-color: var(--surface-color);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            gap: 15px;
+            overflow-y: auto;
+        }
+
+        .tool-group { display: flex; flex-direction: column; gap: 8px; }
+        .tool-group h4 { font-size: 12px; text-transform: uppercase; color: gray; margin-bottom: 5px; }
+
+        /* Canvas Area */
+        .canvas-container-wrapper {
+            flex: 1;
+            background-color: var(--canvas-bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            position: relative;
+        }
+
+        /* Hide default file input */
+        #pdf-upload { display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h2>PDF Editor</h2>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn" id="theme-toggle">Toggle Light Mode</button>
+            <button class="btn" id="undo-btn">Undo (Ctrl+Z)</button>
+            <button class="btn" id="redo-btn">Redo (Ctrl+Y)</button>
+            <label class="btn" for="pdf-upload">Load PDF</label>
+            <input type="file" id="pdf-upload" accept="application/pdf" />
+            <button class="btn btn-primary" id="export-btn">Export PDF</button>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <aside class="sidebar">
+            <div class="tool-group">
+                <h4>Tools</h4>
+                <button class="btn" id="add-text-btn">+ Add Text</button>
+                <button class="btn" id="pan-mode-btn">Pan Mode (Space)</button>
+                <button class="btn" id="select-mode-btn">Select Mode</button>
+            </div>
+            <div class="tool-group">
+                <h4>Z-Index</h4>
+                <button class="btn" id="bring-front-btn">Bring to Front</button>
+                <button class="btn" id="send-back-btn">Send to Back</button>
+            </div>
+            <div class="tool-group">
+                <h4>Pages</h4>
+                <div id="thumbnails-container" style="min-height: 200px; border: 1px dashed var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 12px; color: gray;">
+                    No pages loaded
+                </div>
+            </div>
+        </aside>
+
+        <main class="canvas-container-wrapper" id="canvas-wrapper">
+            <canvas id="editor-canvas"></canvas>
+        </main>
+    </div>
+
+    <script>
+        // --- 1. SETUP & STATE ---
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        const AppState = {
+            currentPdfDoc: null,
+            pdfBytes: null,
+            currentPage: 1,
+            history: [],
+            historyIndex: -1,
+            isPanning: false
+        };
+
+        // Initialize Fabric.js
+        const canvas = new fabric.Canvas('editor-canvas', {
+            width: 800,
+            height: 1050, // Standard A4 ratio
+            backgroundColor: '#ffffff',
+            preserveObjectStacking: true // Important for Z-index management
+        });
+
+        // --- 2. THEME MANAGEMENT ---
+        const themeToggle = document.getElementById('theme-toggle');
+        themeToggle.addEventListener('click', () => {
+            const body = document.body;
+            if (body.getAttribute('data-theme') === 'light') {
+                body.removeAttribute('data-theme');
+                themeToggle.textContent = 'Toggle Light Mode';
+            } else {
+                body.setAttribute('data-theme', 'light');
+                themeToggle.textContent = 'Toggle Dark Mode';
+            }
+        });
+
+        // --- 3. FILE INGESTION (PDF.js) ---
+        document.getElementById('pdf-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const arrayBuffer = await file.arrayBuffer();
+            AppState.pdfBytes = arrayBuffer; // Save for pdf-lib export later
+            
+            const loadingTask = pdfjsLib.getDocument(new Uint8Array(arrayBuffer));
+            AppState.currentPdfDoc = await loadingTask.promise;
+            
+            renderPage(1);
+        });
+
+        async function renderPage(pageNum) {
+            const page = await AppState.currentPdfDoc.getPage(pageNum);
+            const scale = 1.5;
+            const viewport = page.getViewport({ scale });
+
+            // Create an off-screen canvas to render the PDF page via PDF.js
+            const offScreenCanvas = document.createElement('canvas');
+            const context = offScreenCanvas.getContext('2d');
+            offScreenCanvas.height = viewport.height;
+            offScreenCanvas.width = viewport.width;
+
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+            // Set Fabric canvas dimensions to match PDF
+            canvas.setWidth(viewport.width);
+            canvas.setHeight(viewport.height);
+
+            // Set the PDF render as the Fabric background
+            fabric.Image.fromURL(offScreenCanvas.toDataURL(), (img) => {
+                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+            });
+            
+            saveHistory(); // Initial state
+        }
+
+        // --- 4. FABRIC.JS CAPABILITIES (Tools & Z-Index) ---
+        document.getElementById('add-text-btn').addEventListener('click', () => {
+            const text = new fabric.IText('Double click to edit', {
+                left: canvas.width / 2 - 50,
+                top: canvas.height / 2,
+                fontFamily: 'Helvetica',
+                fill: '#000000',
+                fontSize: 24,
+                editable: true
+            });
+            canvas.add(text);
+            canvas.setActiveObject(text);
+            saveHistory();
+        });
+
+        // Z-Index Management
+        document.getElementById('bring-front-btn').addEventListener('click', () => {
+            const activeObj = canvas.getActiveObject();
+            if (activeObj) canvas.bringToFront(activeObj);
+            saveHistory();
+        });
+
+        document.getElementById('send-back-btn').addEventListener('click', () => {
+            const activeObj = canvas.getActiveObject();
+            if (activeObj) canvas.sendToBack(activeObj);
+            saveHistory();
+        });
+
+        // Keyboard Actions (Delete)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Delete') {
+                const activeObjects = canvas.getActiveObjects();
+                if (activeObjects.length) {
+                    canvas.discardActiveObject();
+                    activeObjects.forEach(obj => canvas.remove(obj));
+                    saveHistory();
+                }
+            }
+        });
+
+        // --- 5. UNDO/REDO STACK (Placeholder architecture) ---
+        // True history requires serializing canvas state (canvas.toJSON())
+        function saveHistory() {
+            // Implementation: Push JSON state to AppState.history
+            console.log("State saved to history.");
+        }
+
+        // --- 6. EXPORTING (pdf-lib) ---
+        document.getElementById('export-btn').addEventListener('click', async () => {
+            if (!AppState.pdfBytes) return alert("Load a PDF first.");
+            
+            // 1. Load original PDF bytes with pdf-lib
+            const pdfDoc = await PDFLib.PDFDocument.load(AppState.pdfBytes);
+            const pages = pdfDoc.getPages();
+            const firstPage = pages[0];
+
+            // 2. Extract Fabric.js objects
+            const objects = canvas.getObjects();
+            
+            // 3. Map Fabric objects to pdf-lib draw commands
+            objects.forEach(obj => {
+                if (obj.type === 'i-text') {
+                    // Note: Y-axis is inverted in pdf-lib vs canvas!
+                    firstPage.drawText(obj.text, {
+                        x: obj.left,
+                        y: firstPage.getHeight() - obj.top - obj.fontSize, 
+                        size: obj.fontSize,
+                        color: PDFLib.rgb(0, 0, 0) // Parse actual color in production
+                    });
+                }
+            });
+
+            // 4. Save and trigger download
+            const pdfBytes = await pdfDoc.save();
+            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = "edited_document.pdf";
+            link.click();
+        });
+
+        /* TODO: Snapping System
+           Requires hooking into canvas.on('object:moving', function(e) { ... })
+           and calculating proximity to other objects' bounding rects.
+        */
+    </script>
+</body>
+</html>
