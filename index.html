@@ -1,1146 +1,1062 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced PDF Editor</title>
+    <title>Grout Analytics & Formatter Pro</title>
     
-    <!-- Libraries (Using highly stable 2.16.105 for PDF.js as per your reference) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script>
-      (function ensurePdfjsReady(){
-        const lib = window.pdfjsLib;
-        if (!lib) { return setTimeout(ensurePdfjsReady, 30); }
-        lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
-      })();
-    </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-
+    <!-- Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    
     <style>
+        /* --- CSS Variables & Theming (Apple Premium Style) --- */
         :root {
-            /* Dark Theme (Default) */
-            --bg-color: #121212; --panel-bg: #1e1e1e; --toolbar-bg: #000000;
-            --text-color: #ffffff; --border-color: #333333; --accent-color: #3b82f6;
-            --accent-text: #ffffff; --hover-bg: #2a2a2a; --canvas-bg: #0b0e14;
+            --bg-body: #f5f5f7;
+            --bg-card: #ffffff;
+            --bg-modal: rgba(255, 255, 255, 0.85);
+            --text-main: #1d1d1f;
+            --text-muted: #86868b;
+            --accent: #0071e3;
+            --accent-hover: #0077ed;
+            --border: #d2d2d7;
+            --dropzone-bg: #fafafa;
+            --dropzone-hover: #f0f8ff;
+            --log-bg: #1e1e1e;
+            --log-text: #d4d4d4;
+            --success: #34c759;
+            --warning: #ff9f0a;
+            --error: #ff3b30;
+            --info: #32ade6;
+            --disabled-bg: #e5e5ea;
+            --disabled-text: #aeaeb2;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+            --radius-card: 18px;
+            --radius-btn: 10px;
+            --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --chart-grid: #e5e5ea;
+        }[data-theme="dark"] {
+            --bg-body: #000000;
+            --bg-card: #1c1c1e;
+            --bg-modal: rgba(28, 28, 30, 0.85);
+            --text-main: #f5f5f7;
+            --text-muted: #98989d;
+            --accent: #0a84ff;
+            --accent-hover: #409cff;
+            --border: #38383a;
+            --dropzone-bg: #2c2c2e;
+            --dropzone-hover: #3a3a3c;
+            --log-bg: #000000;
+            --log-text: #e5e5ea;
+            --success: #32d74b;
+            --warning: #ffd60a;
+            --error: #ff453a;
+            --info: #64d2ff;
+            --disabled-bg: #3a3a3c;
+            --disabled-text: #636366;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.5);
+            --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.7);
+            --chart-grid: #38383a;
         }
 
-        [data-theme="light"] {
-            /* Light Theme */
-            --bg-color: #f5f5f5; --panel-bg: #ffffff; --toolbar-bg: #e0e0e0;
-            --text-color: #000000; --border-color: #cccccc; --accent-color: #3b82f6;
-            --accent-text: #ffffff; --hover-bg: #e8e8e8; --canvas-bg: #d0d0d0;
+        /* --- Reset & Base --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--font-stack);
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 20px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            -webkit-font-smoothing: antialiased;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background-color: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-
-        /* Toolbar */
-        .toolbar { background-color: var(--toolbar-bg); padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; z-index: 100; }
-        .toolbar-group { display: flex; gap: 5px; border-right: 1px solid var(--border-color); padding-right: 15px; align-items: center; }
-        .toolbar-group:last-child { border-right: none; }
+        /* --- Layout --- */
+        .app-container { max-width: 1200px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; }
+        h2 { font-size: 1.4rem; font-weight: 600; margin-bottom: 16px; }
         
-        button, label.btn { background: transparent; color: var(--text-color); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
-        button:hover, label.btn:hover { background: var(--hover-bg); border-color: var(--accent-color); }
-        button.active { background: var(--accent-color); color: var(--accent-text); border-color: var(--accent-color); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        input[type="file"] { display: none; }
+        .controls { display: flex; gap: 12px; }
+        .icon-btn {
+            background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border);
+            padding: 8px 16px; font-size: 0.9rem; font-weight: 500; border-radius: 20px;
+            cursor: pointer; transition: all 0.2s ease; box-shadow: var(--shadow-sm);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .icon-btn:hover { background: var(--dropzone-bg); transform: translateY(-1px); }
 
-        /* Main Layout */
-        .main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
+        .card {
+            background-color: var(--bg-card); border-radius: var(--radius-card);
+            padding: 30px; box-shadow: var(--shadow-md); margin-bottom: 24px;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
 
-        /* Sidebars */
-        .sidebar { width: 250px; background-color: var(--panel-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; z-index: 10; }
-        .sidebar-right { border-right: none; border-left: 1px solid var(--border-color); padding: 15px; width: 280px; }
+        /* --- Dropzone --- */
+        .dropzone {
+            border: 2px dashed var(--border); border-radius: 14px; padding: 50px 20px;
+            text-align: center; background-color: var(--dropzone-bg); transition: all 0.3s ease;
+            margin-bottom: 24px; cursor: pointer;
+        }
+        .dropzone.dragover { border-color: var(--accent); background-color: var(--dropzone-hover); transform: scale(1.01); }
+        .dropzone svg { color: var(--accent); margin-bottom: 16px; width: 54px; height: 54px; pointer-events: none; }
+        .dropzone h3 { font-size: 1.2rem; font-weight: 600; margin-bottom: 8px; pointer-events: none; }
+        .dropzone p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 20px; pointer-events: none; }
+        .btn-upload {
+            background-color: transparent; color: var(--accent); border: 1px solid var(--accent);
+            padding: 10px 24px; border-radius: var(--radius-btn); font-size: 1rem; font-weight: 500;
+            pointer-events: none; /* Let dropzone handle click */
+        }
+
+        /* --- Progress & Actions --- */
+        .progress-track { height: 8px; background-color: var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+        .progress-fill { height: 100%; width: 0%; background-color: var(--accent); transition: width 0.3s ease; }
+        .status-text { font-size: 0.95rem; color: var(--text-muted); text-align: center; font-weight: 500; margin-bottom: 24px; }
         
-        .panel-section { margin-bottom: 20px; }
-        .panel-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; color: #888; font-weight: 700; }
-        .prop-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
-        .prop-row label { font-size: 12px; width: 60px; }
-        select, input[type="number"], input[type="color"] { width: 100%; padding: 6px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; font-size: 13px; }
-        
-        /* Thumbnails */
-        .thumbnail { margin: 10px; border: 2px solid transparent; cursor: pointer; position: relative; transition: 0.2s; background: #fff; border-radius: 4px; overflow: hidden; }
-        .thumbnail:hover { border-color: #888; }
-        .thumbnail.active { border-color: var(--accent-color); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3); }
-        .thumbnail canvas { width: 100%; display: block; }
-        .thumbnail-label { text-align: center; font-size: 11px; padding: 6px; background: var(--panel-bg); color: var(--text-color); border-top: 1px solid var(--border-color); }
+        .actions { display: flex; gap: 16px; flex-wrap: wrap; }
+        .btn-main {
+            flex: 1; min-width: 200px; padding: 14px 20px; border: none; border-radius: var(--radius-btn);
+            font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+            background-color: var(--accent); color: #ffffff; display: flex; justify-content: center; align-items: center; gap: 8px;
+        }
+        .btn-main:hover:not(:disabled) { background-color: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3); }
+        .btn-main:disabled { background-color: var(--disabled-bg); color: var(--disabled-text); cursor: not-allowed; box-shadow: none; }
+        .btn-secondary { background-color: transparent; border: 1px solid var(--border); color: var(--text-main); }
+        .btn-secondary:hover:not(:disabled) { background-color: var(--dropzone-bg); box-shadow: var(--shadow-sm); color: var(--text-main); }
 
-        /* Superior Canvas Architecture */
-        .canvas-wrapper { flex: 1; background-color: var(--canvas-bg); overflow: auto; padding: 40px; position: relative; }
-        #canvasContainer { position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.5); background: white; transition: width 0.1s, height 0.1s; }
-        
-        /* Grid Overlay */
-        .grid-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background-image: linear-gradient(to right, rgba(128,128,128,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(128,128,128,0.3) 1px, transparent 1px); display: none; z-index: 5; }
-        .grid-overlay.active { display: block; }
+        /* --- Tooltip --- */
+        .tooltip-wrapper { flex: 1; min-width: 200px; position: relative; display: flex; }
+        .tooltip-wrapper .btn-main { width: 100%; }
+        .tooltip-wrapper[data-tooltip]:hover::after {
+            content: attr(data-tooltip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.85); color: #fff; padding: 8px 12px; border-radius: 8px;
+            font-size: 0.85rem; white-space: nowrap; pointer-events: none; margin-bottom: 10px; z-index: 10;
+        }
 
-        .icon-btn-group { display: flex; gap: 4px; }
-        .icon-btn-group button { padding: 6px 8px; flex: 1; justify-content: center; }
+        /* --- Logs --- */
+        .logs-window {
+            background-color: var(--log-bg); color: var(--log-text); font-family: "SF Mono", monospace;
+            font-size: 0.95rem; padding: 20px; border-radius: 12px; height: 200px; overflow-y: auto;
+            line-height: 1.5; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .log-entry { margin-bottom: 6px; word-break: break-all; }
+        .log-time { color: #888; margin-right: 8px; font-size: 0.9em; }
+        .log-error { color: var(--error); }
+        .log-success { color: var(--success); }
+        .log-info { color: var(--info); }
+        .log-warning { color: var(--warning); }
 
-        /* Loading Overlay & Floating Logs */
-        #loadingOverlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); color: white; z-index: 9999; justify-content: center; align-items: center; flex-direction: column; gap: 15px; backdrop-filter: blur(4px); }
-        .spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent-color); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* --- Dashboard --- */
+        #dashboard { display: none; animation: fadeIn 0.5s ease; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .kpi-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+            padding: 20px; text-align: center; box-shadow: var(--shadow-sm);
+        }
+        .kpi-value { font-size: 2rem; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+        .kpi-label { font-size: 0.9rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
         
-        #floatingLogs { display: none; position: absolute; bottom: 20px; right: 20px; width: 450px; height: 300px; background: rgba(11, 14, 20, 0.95); color: #10b981; font-family: ui-monospace, monospace; font-size: 11px; padding: 15px; overflow-y: auto; border-radius: 8px; z-index: 9999; border: 1px solid #2a2f3e; box-shadow: 0 10px 30px rgba(0,0,0,0.5); flex-direction: column; }
-        .log-header { display: flex; justify-content: space-between; border-bottom: 1px solid #2a2f3e; padding-bottom: 8px; margin-bottom: 8px; color: #fff; font-weight: bold; }
-        .log-info { color: #10b981; margin-bottom: 4px; }
-        .log-warn { color: #f59e0b; margin-bottom: 4px; }
-        .log-error { color: #ef4444; margin-bottom: 4px; }
+        .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); gap: 24px; margin-bottom: 24px; }
+        .chart-container { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; height: 400px; }
+        
+        /* --- Table --- */
+        .table-container { overflow-x: auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
+        th { background-color: var(--dropzone-bg); font-weight: 600; color: var(--text-muted); position: sticky; top: 0; z-index: 1; }
+        tr:hover td { background-color: var(--dropzone-hover); cursor: pointer; }
+        .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
+        .badge.good { background: rgba(52, 199, 89, 0.15); color: var(--success); }
+        .badge.warn { background: rgba(255, 159, 10, 0.15); color: var(--warning); }
+        .badge.bad { background: rgba(255, 59, 48, 0.15); color: var(--error); }
+
+        /* --- Modal --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+            display: none; justify-content: center; align-items: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        .modal-content {
+            background: var(--bg-card); width: 95%; max-width: 1100px; height: 90vh;
+            border-radius: var(--radius-card); box-shadow: var(--shadow-lg);
+            display: flex; flex-direction: column; overflow: hidden; transform: scale(0.95); transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+        .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 24px; }
+        .close-btn { background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; }
+        .close-btn:hover { color: var(--error); }
+        .modal-chart { height: 350px; width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
 
-    <!-- Toolbar -->
-    <div class="toolbar">
-        <div class="toolbar-group">
-            <label class="btn primary"><i class="fas fa-folder-open"></i> Open PDF<input type="file" id="fileInput" accept="application/pdf"></label>
-            <button id="exportBtn" disabled><i class="fas fa-download"></i> Export</button>
-        </div>
-        <div class="toolbar-group">
-            <button id="undoBtn" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
-            <button id="redoBtn" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
-            <button id="deleteToolbarBtn" title="Delete Selected (Del)" style="color: #ef4444;"><i class="fas fa-trash"></i></button>
-        </div>
-        <div class="toolbar-group">
-            <button id="addTextBtn"><i class="fas fa-font"></i> Add Text</button>
-            <label class="btn"><i class="fas fa-image"></i> Add Image<input type="file" id="imageInput" accept="image/*"></label>
-            <button id="replaceAreaBtn" title="Draw a box over an existing image to replace it"><i class="fas fa-object-ungroup"></i> Replace Area</button>
-        </div>
-        <div class="toolbar-group">
-            <button id="zoomOutBtn"><i class="fas fa-search-minus"></i></button>
-            <span id="zoomLevel" style="font-size: 13px; width: 45px; text-align: center; font-weight: bold;">100%</span>
-            <button id="zoomInBtn"><i class="fas fa-search-plus"></i></button>
-            <button id="fitScreenBtn"><i class="fas fa-expand"></i> Fit</button>
-        </div>
-        <div class="toolbar-group">
-            <button id="gridToggleBtn" title="Toggle Grid"><i class="fas fa-border-all"></i> Grid</button>
-            <button id="snapToggleBtn" class="active" title="Snap to Grid/Elements"><i class="fas fa-magnet"></i> Snap</button>
-            <button id="targetSnapBtn" title="Target Snap Mode"><i class="fas fa-crosshairs"></i> Target Snap</button>
-        </div>
-        <div class="toolbar-group" style="margin-left: auto;">
-            <button id="toggleLogsBtn" title="Toggle System Logs"><i class="fas fa-terminal"></i> Logs</button>
-            <button id="themeToggleBtn"><i class="fas fa-adjust"></i> Theme</button>
-        </div>
+    <div class="app-container">
+        <header>
+            <h1 id="ui-title">Grout Analytics Pro</h1>
+            <div class="controls">
+                <button class="icon-btn" id="btn-lang" onclick="toggleLanguage()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                    <span id="lang-text">EN</span>
+                </button>
+                <button class="icon-btn" id="btn-theme" onclick="toggleTheme()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                    <span id="theme-text">Dark</span>
+                </button>
+            </div>
+        </header>
+        
+        <!-- Upload & Processing Card -->
+        <main class="card">
+            <div class="dropzone" id="dropzone">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <h3 id="ui-drop-title">Drag & Drop XML Files</h3>
+                <p id="ui-drop-sub">or click to browse</p>
+                <button class="btn-upload" id="ui-btn-upload">Select Files</button>
+                <input type="file" id="fileInput" multiple accept=".xml" style="display: none;">
+            </div>
+            
+            <div class="progress-wrapper">
+                <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
+                <p class="status-text" id="statusText">Waiting for files...</p>
+            </div>
+            
+            <div class="actions">
+                <button class="btn-main" id="btn-process" onclick="processFiles()" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span id="ui-btn-process">Process & Analyze</span>
+                </button>
+                
+                <button class="btn-main btn-secondary" id="btn-download-ind" onclick="downloadIndividually()" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    <span id="ui-btn-download-ind">Download Formatted XML</span>
+                </button>
+                
+                <div class="tooltip-wrapper" id="zip-tooltip-wrapper">
+                    <button class="btn-main btn-secondary" id="btn-download-zip" onclick="downloadZip()" disabled>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                        <span id="ui-btn-download-zip">Download as ZIP</span>
+                    </button>
+                </div>
+            </div>
+            
+            <h2 id="ui-logs-title" style="font-size: 1.1rem; margin-top: 20px;">Event Log</h2>
+            <div class="logs-window" id="logsWindow"></div>
+        </main>
+
+        <!-- Analytics Dashboard -->
+        <section id="dashboard">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 id="ui-dash-title">Project Overview Dashboard</h2>
+                <div class="controls">
+                    <button class="icon-btn" onclick="exportCSV('runs')">Export Runs CSV</button>
+                    <button class="icon-btn" onclick="exportCSV('holestages')">Export Rollup CSV</button>
+                </div>
+            </div>
+
+            <div class="kpi-grid" id="kpi-container">
+                <!-- Injected via JS -->
+            </div>
+
+            <div class="chart-grid">
+                <div class="chart-container" id="chart-scatter"></div>
+                <div class="chart-container" id="chart-cumulative"></div>
+                <div class="chart-container" id="chart-bar"></div>
+                <div class="chart-container" id="chart-pie"></div>
+            </div>
+
+            <div class="card" style="padding: 0; overflow: hidden;">
+                <div style="padding: 20px; border-bottom: 1px solid var(--border);">
+                    <h3 id="ui-table-title">Hole-Stage Summary (Click row for details)</h3>
+                </div>
+                <div class="table-container">
+                    <table id="rollup-table">
+                        <thead>
+                            <tr>
+                                <th>Hole-Stage</th>
+                                <th>Runs</th>
+                                <th>Total Vol (L)</th>
+                                <th>Vol/m (L/m)</th>
+                                <th>Peak P (bar)</th>
+                                <th>Active Time</th>
+                                <th>Difficulty</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </div>
 
-    <!-- Main Content -->
-    <div class="main-container">
-        <!-- Loading Overlay -->
-        <div id="loadingOverlay">
-            <div class="spinner"></div>
-            <div id="loadingText" style="font-size: 18px; font-weight: 600; letter-spacing: 1px;">Processing...</div>
-        </div>
-
-        <!-- Floating Logs CLI -->
-        <div id="floatingLogs">
-            <div class="log-header">
-                <span>System Logs</span>
-                <button onclick="document.getElementById('logContent').innerHTML=''" style="background:transparent; border:none; color:#888; cursor:pointer; font-size:11px;">Clear</button>
+    <!-- Run Detail Modal -->
+    <div class="modal-overlay" id="runModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Run Details</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
             </div>
-            <div id="logContent"></div>
-        </div>
-
-        <!-- Left Sidebar (Pages) -->
-        <div class="sidebar" id="thumbnailsContainer">
-            <div style="padding: 20px; text-align: center; color: #888; font-size: 13px;">Upload a PDF to begin</div>
-        </div>
-
-        <!-- Canvas Area (Native Scrollbars) -->
-        <div class="canvas-wrapper" id="canvasWrapper">
-            <div id="canvasContainer">
-                <div class="grid-overlay" id="gridOverlay"></div>
-                <canvas id="pdfCanvas"></canvas>
-            </div>
-        </div>
-
-        <!-- Right Sidebar (Properties) -->
-        <div class="sidebar sidebar-right">
-            <div class="panel-section">
-                <h3>Alignment</h3>
-                <div class="icon-btn-group">
-                    <button id="alignCenterH" title="Center Horizontally"><i class="fas fa-arrows-alt-h"></i></button>
-                    <button id="alignCenterV" title="Center Vertically"><i class="fas fa-arrows-alt-v"></i></button>
+            <div class="modal-body">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="modal-badges"></div>
+                <div class="modal-chart" id="modal-chart-time"></div>
+                <div style="display: flex; gap: 24px;">
+                    <div class="modal-chart" id="modal-chart-pv" style="flex: 1;"></div>
+                    <div class="modal-chart" id="modal-chart-scatter" style="flex: 1;"></div>
                 </div>
-            </div>
-
-            <div class="panel-section">
-                <h3>Arrange (Z-Index)</h3>
-                <div class="icon-btn-group">
-                    <button id="bringFrontBtn" title="Bring to Front"><i class="fas fa-angle-double-up"></i></button>
-                    <button id="bringForwardBtn" title="Bring Forward"><i class="fas fa-angle-up"></i></button>
-                    <button id="sendBackwardBtn" title="Send Backward"><i class="fas fa-angle-down"></i></button>
-                    <button id="sendBackBtn" title="Send to Back"><i class="fas fa-angle-double-down"></i></button>
-                </div>
-            </div>
-
-            <div class="panel-section" id="textProperties" style="display: none;">
-                <h3>Text Formatting</h3>
-                <div class="prop-row">
-                    <select id="fontFamily">
-                        <option value="Helvetica">Helvetica</option>
-                        <option value="Times New Roman">Times New Roman</option>
-                        <option value="Courier">Courier</option>
-                        <option value="Arial">Arial</option>
-                    </select>
-                </div>
-                <div class="prop-row">
-                    <label>Size</label>
-                    <input type="number" id="fontSize" value="16" min="1">
-                </div>
-                <div class="prop-row">
-                    <label>Color</label>
-                    <input type="color" id="textColor" value="#000000">
-                </div>
-                <div class="icon-btn-group" style="margin-top: 10px;">
-                    <button id="textAlignLeft"><i class="fas fa-align-left"></i></button>
-                    <button id="textAlignCenter"><i class="fas fa-align-center"></i></button>
-                    <button id="textAlignRight"><i class="fas fa-align-right"></i></button>
-                    <button id="textAlignJustify"><i class="fas fa-align-justify"></i></button>
-                </div>
-            </div>
-
-            <div class="panel-section">
-                <h3>Element</h3>
-                <button id="lockBtn" style="width: 100%; justify-content: center;"><i class="fas fa-lock"></i> Lock/Unlock</button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- Verbose Logging System ---
-        function logVerbose(msg, type = 'info') {
-            const logContent = document.getElementById('logContent');
-            const entry = document.createElement('div');
-            const time = new Date().toLocaleTimeString();
-            entry.className = `log-${type}`;
-            entry.innerText = `[${time}] ${msg}`;
-            logContent.appendChild(entry);
-            logContent.parentElement.scrollTop = logContent.parentElement.scrollHeight;
-            
-            if (type === 'error') console.error(msg);
-            else if (type === 'warn') console.warn(msg);
-            else console.log(msg);
+        // ==========================================
+        // CONFIGURATION & CONSTANTS
+        // ==========================================
+        const CONFIG = {
+            ACTIVE_FLOW_THRESHOLD: 0.5,
+            VERY_LOW_FLOW_THRESHOLD: 0.5,
+            MIN_CONSECUTIVE_REFUSAL_POINTS: 3,
+            HIGH_PRESSURE_QUANTILE: 0.75,
+            ZERO_TAKE_VOLUME_THRESHOLD: 0.5,
+            WEIGHTS: { duration: 0.15, volPerMeter: 0.2, refusal: 0.3, retry: 0.2, peakP: 0.15 }
+        };
 
-            // Reset loading timeout if active to prevent premature closure during heavy tasks
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay.style.display === 'flex') {
-                clearTimeout(loadingTimeout);
-                loadingTimeout = setTimeout(() => {
-                    overlay.style.display = 'none';
-                    logVerbose("Loading overlay dismissed due to inactivity.", "warn");
-                }, 10000);
+        // ==========================================
+        // STATE MANAGEMENT
+        // ==========================================
+        let state = {
+            lang: 'en',
+            theme: 'light',
+            filesToProcess: [],
+            processedFiles:[], // For _KLAR.xml downloads
+            analytics: {
+                runs: [],
+                points: [],
+                holeStages:[]
+            },
+            currentModalRunId: null
+        };
+
+        // ==========================================
+        // i18n TRANSLATIONS
+        // ==========================================
+        const i18n = {
+            en: {
+                title: "Grout Analytics Pro",
+                dropTitle: "Drag & Drop XML Files",
+                dropSub: "or click to browse",
+                btnUpload: "Select Files",
+                btnProcess: "Process & Analyze",
+                btnDownloadSingle: "Download Formatted XML",
+                btnDownloadMulti: "Download Formatted Separately",
+                btnDownloadZip: "Download as ZIP",
+                logsTitle: "Event Log",
+                dashTitle: "Project Overview Dashboard",
+                tableTitle: "Hole-Stage Summary (Click row for details)",
+                statusWaiting: "Waiting for files...",
+                statusReady: "Ready to process {0} file(s).",
+                statusProcessing: "Processing file {0} of {1}...",
+                statusDone: "Done! {0} file(s) processed.",
+                zipTooltip: "Only supported for multiple files.",
+                zipFilename: "Formatted_XML_Files.zip",
+                kpiRuns: "Total Runs",
+                kpiHoles: "Hole-Stages",
+                kpiVol: "Total Volume (L)",
+                kpiTime: "Active Pumping (hrs)",
+                kpiRefusal: "Refusal Prone",
+                kpiZero: "Zero Take Runs",
+                classStable: "Productive Stable",
+                classUnstable: "Productive Unstable",
+                classRefusal: "Refusal Prone",
+                classPressure: "Pressure Limited",
+                classZero: "No Take",
+                classTest: "Test/Non-Prod"
+            },
+            sv: {
+                title: "Injekteringsanalys Pro",
+                dropTitle: "Dra och släpp XML-filer",
+                dropSub: "eller klicka för att bläddra",
+                btnUpload: "Välj filer",
+                btnProcess: "Bearbeta & Analysera",
+                btnDownloadSingle: "Ladda ner formaterad XML",
+                btnDownloadMulti: "Ladda ner separat",
+                btnDownloadZip: "Ladda ner som ZIP",
+                logsTitle: "Händelselogg",
+                dashTitle: "Projektöversikt",
+                tableTitle: "Hål-Steg Sammanfattning (Klicka på rad för detaljer)",
+                statusWaiting: "Väntar på filer...",
+                statusReady: "Redo att bearbeta {0} fil(er).",
+                statusProcessing: "Bearbetar fil {0} av {1}...",
+                statusDone: "Klar! {0} fil(er) bearbetade.",
+                zipTooltip: "Stöds endast för flera filer.",
+                zipFilename: "Formaterade_XML_Filer.zip",
+                kpiRuns: "Totalt Antal Körningar",
+                kpiHoles: "Hål-Steg",
+                kpiVol: "Total Volym (L)",
+                kpiTime: "Aktiv Pumpning (tim)",
+                kpiRefusal: "Vägransbenägna",
+                kpiZero: "Noll-mottagning",
+                classStable: "Produktiv Stabil",
+                classUnstable: "Produktiv Instabil",
+                classRefusal: "Vägransbenägen",
+                classPressure: "Tryckbegränsad",
+                classZero: "Ingen Mottagning",
+                classTest: "Test/Ej Produktion"
             }
-        }
+        };
+        const t = (key) => i18n[state.lang][key] || key;
 
-        let loadingTimeout;
-        function showLoading(show, text = "Processing...") {
-            const overlay = document.getElementById('loadingOverlay');
-            document.getElementById('loadingText').innerText = text;
-            
-            if (show) {
-                overlay.style.display = 'flex';
-                logVerbose(`--- ${text} ---`);
-                clearTimeout(loadingTimeout);
-                loadingTimeout = setTimeout(() => {
-                    if (overlay.style.display === 'flex') {
-                        logVerbose("Loading timeout reached. Forcing overlay to close.", "warn");
-                        overlay.style.display = 'none';
-                    }
-                }, 10000);
-            } else {
-                clearTimeout(loadingTimeout);
-                overlay.style.display = 'none';
-            }
-        }
+        // ==========================================
+        // DOM ELEMENTS
+        // ==========================================
+        const els = {
+            dropzone: document.getElementById('dropzone'),
+            fileInput: document.getElementById('fileInput'),
+            progressBar: document.getElementById('progressBar'),
+            statusText: document.getElementById('statusText'),
+            btnProcess: document.getElementById('btn-process'),
+            btnDownloadInd: document.getElementById('btn-download-ind'),
+            btnDownloadZip: document.getElementById('btn-download-zip'),
+            zipTooltipWrapper: document.getElementById('zip-tooltip-wrapper'),
+            logsWindow: document.getElementById('logsWindow'),
+            dashboard: document.getElementById('dashboard'),
+            modal: document.getElementById('runModal')
+        };
 
-        // --- Configuration & State ---
-        let pdfDoc = null;
-        let currentPageNum = 1;
-        let canvas;
-        let pdfBytesOriginal = null;
-        
-        let pageCanvases = {}; 
-        let pageHistories = {}; 
-        let isHistoryAction = false;
-
-        let currentPdfPageWidth = 0;
-        let currentPdfPageHeight = 0;
-        let currentZoom = 1;
-
-        let snapEnabled = true;
-        let targetSnapMode = false;
-        let targetElement = null;
-        let isReplacingArea = false;
-        let replaceRect = null;
-        let replaceStartX = 0, replaceStartY = 0;
-        const GRID_SIZE = 20;
-
-        const wrapper = document.getElementById('canvasWrapper');
-        const container = document.getElementById('canvasContainer');
-
-        // --- Initialization ---
+        // ==========================================
+        // INITIALIZATION & UI
+        // ==========================================
         function init() {
-            try {
-                logVerbose("Initializing Fabric.js canvas...");
-                canvas = new fabric.Canvas('pdfCanvas', {
-                    preserveObjectStacking: true,
-                    selection: true
-                });
+            updateTextUI();
+            log("System ready. Please select files to begin.", 'info');
+            setupDragAndDrop();
+        }
 
-                setupEventListeners();
-                setupKeyboardShortcuts();
-                setupCanvasEvents();
-                setupNativePanning();
-                loadAutoSave();
-                logVerbose("Initialization complete. Ready for PDF upload.");
-            } catch (e) {
-                logVerbose(`Initialization failed: ${e.message}`, "error");
+        function toggleTheme() {
+            state.theme = state.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', state.theme);
+            document.getElementById('theme-text').innerText = state.theme === 'light' ? 'Dark' : 'Light';
+            if(state.analytics.runs.length > 0) renderDashboard(); // Re-render charts for theme
+        }
+
+        function toggleLanguage() {
+            state.lang = state.lang === 'en' ? 'sv' : 'en';
+            document.getElementById('lang-text').innerText = state.lang === 'en' ? 'SV' : 'EN';
+            updateTextUI();
+            updateStateUI();
+            if(state.analytics.runs.length > 0) renderDashboard();
+        }
+
+        function updateTextUI() {
+            document.getElementById('ui-title').innerText = t('title');
+            document.getElementById('ui-drop-title').innerText = t('dropTitle');
+            document.getElementById('ui-drop-sub').innerText = t('dropSub');
+            document.getElementById('ui-btn-upload').innerText = t('btnUpload');
+            document.getElementById('ui-btn-process').innerText = t('btnProcess');
+            document.getElementById('ui-btn-download-zip').innerText = t('btnDownloadZip');
+            document.getElementById('ui-logs-title').innerText = t('logsTitle');
+            document.getElementById('ui-dash-title').innerText = t('dashTitle');
+            document.getElementById('ui-table-title').innerText = t('tableTitle');
+            
+            if (state.processedFiles.length > 0) {
+                document.getElementById('ui-btn-download-ind').innerText = state.processedFiles.length === 1 ? t('btnDownloadSingle') : t('btnDownloadMulti');
+                if (state.processedFiles.length === 1) els.zipTooltipWrapper.setAttribute('data-tooltip', t('zipTooltip'));
+                else els.zipTooltipWrapper.removeAttribute('data-tooltip');
+            } else {
+                document.getElementById('ui-btn-download-ind').innerText = t('btnDownloadSingle');
             }
         }
 
-        // --- PDF Loading & Rendering ---
-        document.getElementById('fileInput').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            showLoading(true, "Loading PDF...");
-            try {
-                logVerbose(`Reading file: ${file.name} (${file.size} bytes)`);
-                const arrayBuffer = await file.arrayBuffer();
-                pdfBytesOriginal = arrayBuffer;
-                
-                logVerbose("Parsing PDF structure with pdf.js...");
-                pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                logVerbose(`PDF loaded successfully. Pages: ${pdfDoc.numPages}`);
-                
-                document.getElementById('exportBtn').disabled = false;
-                document.getElementById('thumbnailsContainer').innerHTML = '';
-                
-                // SUPERIOR FIX: Load main page FIRST, do not await thumbnails
-                await loadPage(1);
-                renderThumbnails(); // Async background task
-            } catch (error) {
-                logVerbose(`Failed to load PDF: ${error.message}`, "error");
-                alert("Failed to load PDF. Check logs.");
-                showLoading(false);
-            }
-        });
-
-        async function renderThumbnails() {
-            logVerbose("Generating sidebar thumbnails in background...");
-            const thumbContainer = document.getElementById('thumbnailsContainer');
-            for (let i = 1; i <= pdfDoc.numPages; i++) {
-                try {
-                    const page = await pdfDoc.getPage(i);
-                    const viewport = page.getViewport({ scale: 0.2 });
-                    
-                    const thumbWrapper = document.createElement('div');
-                    thumbWrapper.className = 'thumbnail';
-                    thumbWrapper.id = `thumb-${i}`;
-                    if (i === currentPageNum) thumbWrapper.classList.add('active');
-                    thumbWrapper.onclick = () => loadPage(i);
-
-                    const thumbCanvas = document.createElement('canvas');
-                    thumbCanvas.width = viewport.width;
-                    thumbCanvas.height = viewport.height;
-                    const ctx = thumbCanvas.getContext('2d');
-
-                    const renderTask = page.render({ canvasContext: ctx, viewport: viewport });
-                    
-                    // Anti-Hang Timeout for Thumbnails
-                    Promise.race([
-                        renderTask.promise,
-                        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
-                    ]).then(() => {
-                        const label = document.createElement('div');
-                        label.className = 'thumbnail-label';
-                        label.innerText = `Page ${i}`;
-                        thumbWrapper.appendChild(thumbCanvas);
-                        thumbWrapper.appendChild(label);
-                        thumbContainer.appendChild(thumbWrapper);
-                    }).catch(err => {
-                        logVerbose(`Thumbnail warning for page ${i}: ${err.message}`, "warn");
-                        const label = document.createElement('div');
-                        label.className = 'thumbnail-label';
-                        label.innerText = `Page ${i} (!)`;
-                        thumbWrapper.appendChild(thumbCanvas);
-                        thumbWrapper.appendChild(label);
-                        thumbContainer.appendChild(thumbWrapper);
-                    });
-                } catch (err) {
-                    logVerbose(`Error setting up thumbnail for page ${i}: ${err.message}`, "warn");
-                }
+        function updateStateUI() {
+            if (state.filesToProcess.length === 0) {
+                els.statusText.innerText = t('statusWaiting');
+                els.btnProcess.disabled = true;
+                els.btnDownloadInd.disabled = true;
+                els.btnDownloadZip.disabled = true;
+                els.progressBar.style.width = '0%';
+                els.dashboard.style.display = 'none';
+            } else if (state.processedFiles.length === state.filesToProcess.length) {
+                els.statusText.innerText = t('statusDone').replace('{0}', state.processedFiles.length);
+                els.btnProcess.disabled = true;
+                els.btnDownloadInd.disabled = false;
+                els.btnDownloadZip.disabled = state.processedFiles.length === 1;
+                els.dashboard.style.display = 'block';
+            } else {
+                els.statusText.innerText = t('statusReady').replace('{0}', state.filesToProcess.length);
+                els.btnProcess.disabled = false;
+                els.btnDownloadInd.disabled = true;
+                els.btnDownloadZip.disabled = true;
+                els.progressBar.style.width = '0%';
+                els.dashboard.style.display = 'none';
             }
         }
 
-        async function loadPage(pageNum) {
-            showLoading(true, `Loading Page ${pageNum}...`);
-            try {
-                if (pdfDoc && canvas.getObjects().length > 0) {
-                    logVerbose(`Saving state for page ${currentPageNum} before switching.`);
-                    pageCanvases[currentPageNum] = getCanvasState();
-                }
-
-                currentPageNum = pageNum;
-                
-                document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
-                const activeThumb = document.getElementById(`thumb-${pageNum}`);
-                if(activeThumb) activeThumb.classList.add('active');
-
-                logVerbose(`Fetching page ${pageNum} data...`);
-                const page = await pdfDoc.getPage(pageNum);
-                
-                const unscaledViewport = page.getViewport({ scale: 1.0 });
-                currentPdfPageWidth = unscaledViewport.width;
-                currentPdfPageHeight = unscaledViewport.height;
-
-                // Memory Crash Prevention
-                let renderScale = 2.0; 
-                if (currentPdfPageWidth * renderScale > 4000 || currentPdfPageHeight * renderScale > 4000) {
-                    renderScale = Math.min(4000 / currentPdfPageWidth, 4000 / currentPdfPageHeight);
-                    logVerbose(`Scaled down render resolution to ${renderScale.toFixed(2)}x to prevent memory issues.`);
-                }
-
-                const renderViewport = page.getViewport({ scale: renderScale });
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = renderViewport.width;
-                tempCanvas.height = renderViewport.height;
-                const ctx = tempCanvas.getContext('2d');
-
-                logVerbose(`Rendering PDF background (${tempCanvas.width}x${tempCanvas.height})...`);
-                const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
-                
-                // Anti-Hang Timeout for Main Page
-                try {
-                    await Promise.race([
-                        renderTask.promise,
-                        new Promise((_, reject) => setTimeout(() => reject(new Error("PDF.js render timeout")), 8000))
-                    ]);
-                } catch (e) {
-                    logVerbose(`Render warning: ${e.message}. Proceeding with partial buffer.`, "warn");
-                }
-
-                logVerbose("Applying background to Fabric canvas...");
-                
-                // Setup Fabric Canvas dimensions to exact PDF points
-                canvas.clear();
-                canvas.setWidth(currentPdfPageWidth);
-                canvas.setHeight(currentPdfPageHeight);
-
-                const bgImage = new fabric.Image(tempCanvas);
-                bgImage.scale(1 / renderScale);
-
-                await new Promise((resolve) => {
-                    canvas.setBackgroundImage(bgImage, () => {
-                        logVerbose("Background applied successfully.");
-                        resolve();
-                    });
-                });
-
-                if (pageCanvases[pageNum]) {
-                    logVerbose("Restoring previous edits for this page...");
-                    await new Promise((resolve) => {
-                        canvas.loadFromJSON(pageCanvases[pageNum], () => {
-                            canvas.setBackgroundImage(bgImage, () => {
-                                canvas.renderAll();
-                                resolve();
-                            });
-                        });
-                    });
-                } else {
-                    canvas.renderAll();
-                }
-
-                if (!pageHistories[pageNum]) saveHistory();
-                fitToScreen();
-
-            } catch (error) {
-                logVerbose(`Error loading page ${pageNum}: ${error.message}`, "error");
-            } finally {
-                showLoading(false);
-            }
+        function log(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString('sv-SE', { hour12: false });
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
+            els.logsWindow.appendChild(entry);
+            els.logsWindow.scrollTop = els.logsWindow.scrollHeight;
         }
 
-        // --- Superior Canvas Navigation (Native Scrollbars + CSS Centering) ---
-        function updateContainerCentering() {
-            container.style.margin = '0';
-            const wrapperWidth = wrapper.clientWidth;
-            const wrapperHeight = wrapper.clientHeight;
-            const containerWidth = container.offsetWidth;
-            const containerHeight = container.offsetHeight;
-            
-            let marginTop = 0;
-            let marginLeft = 0;
-            
-            if (containerWidth < wrapperWidth) marginLeft = (wrapperWidth - containerWidth) / 2;
-            if (containerHeight < wrapperHeight) marginTop = (wrapperHeight - containerHeight) / 2;
-            
-            container.style.marginLeft = marginLeft + 'px';
-            container.style.marginTop = marginTop + 'px';
-        }
-
-        function setZoom(zoom) {
-            currentZoom = zoom;
-            canvas.setZoom(zoom);
-            
-            // Scale the DOM element to prevent clipping
-            const newWidth = currentPdfPageWidth * zoom;
-            const newHeight = currentPdfPageHeight * zoom;
-            canvas.setWidth(newWidth);
-            canvas.setHeight(newHeight);
-            
-            container.style.width = newWidth + 'px';
-            container.style.height = newHeight + 'px';
-            
-            document.getElementById('zoomLevel').innerText = Math.round(zoom * 100) + '%';
-            updateGrid();
-            updateContainerCentering();
-        }
-
-        function fitToScreen() {
-            if (!currentPdfPageWidth || !currentPdfPageHeight) return;
-            const padding = 60;
-            const cw = wrapper.clientWidth - padding;
-            const ch = wrapper.clientHeight - padding;
-            
-            if (cw <= 0 || ch <= 0) return; // Hidden state
-            
-            const scaleX = cw / currentPdfPageWidth;
-            const scaleY = ch / currentPdfPageHeight;
-            let zoom = Math.min(scaleX, scaleY);
-            if (zoom > 3) zoom = 3;
-            if (zoom < 0.1) zoom = 0.1;
-            
-            setZoom(zoom);
-        }
-
-        function updateGrid() {
-            const grid = document.getElementById('gridOverlay');
-            if (grid.classList.contains('active')) {
-                grid.style.backgroundSize = `${GRID_SIZE * currentZoom}px ${GRID_SIZE * currentZoom}px`;
-            }
-        }
-
-        document.getElementById('zoomInBtn').onclick = () => setZoom(currentZoom * 1.2);
-        document.getElementById('zoomOutBtn').onclick = () => setZoom(currentZoom / 1.2);
-        document.getElementById('fitScreenBtn').onclick = fitToScreen;
-        window.addEventListener('resize', () => { if (pdfDoc) updateContainerCentering(); });
-
-        // --- Native Spacebar Panning ---
-        let isSpaceDown = false;
-        let isNativePanning = false;
-        let startX, startY, scrollLeft, scrollTop;
-
-        function setupNativePanning() {
-            window.addEventListener('keydown', (e) => {
-                if (e.code === 'Space' && e.target === document.body) {
-                    e.preventDefault();
-                    if (!isSpaceDown) {
-                        isSpaceDown = true;
-                        wrapper.style.cursor = 'grab';
-                        canvas.selection = false;
-                        canvas.forEachObject(o => o.evented = false);
-                    }
-                }
+        // ==========================================
+        // FILE HANDLING
+        // ==========================================
+        function setupDragAndDrop() {
+            els.dropzone.addEventListener('click', () => els.fileInput.click());
+            els.dropzone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropzone.classList.add('dragover'); });
+            els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('dragover'));
+            els.dropzone.addEventListener('drop', (e) => {
+                e.preventDefault(); els.dropzone.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
             });
-
-            window.addEventListener('keyup', (e) => {
-                if (e.code === 'Space') {
-                    isSpaceDown = false;
-                    wrapper.style.cursor = 'default';
-                    canvas.selection = true;
-                    canvas.forEachObject(o => o.evented = true);
-                }
-            });
-
-            wrapper.addEventListener('mousedown', (e) => {
-                if (isSpaceDown) {
-                    isNativePanning = true;
-                    startX = e.pageX - wrapper.offsetLeft;
-                    startY = e.pageY - wrapper.offsetTop;
-                    scrollLeft = wrapper.scrollLeft;
-                    scrollTop = wrapper.scrollTop;
-                    wrapper.style.cursor = 'grabbing';
-                }
-            });
-
-            wrapper.addEventListener('mousemove', (e) => {
-                if (!isNativePanning) return;
-                e.preventDefault();
-                const x = e.pageX - wrapper.offsetLeft;
-                const y = e.pageY - wrapper.offsetTop;
-                wrapper.scrollLeft = scrollLeft - (x - startX);
-                wrapper.scrollTop = scrollTop - (y - startY);
-            });
-
-            window.addEventListener('mouseup', () => {
-                isNativePanning = false;
-                if (isSpaceDown) wrapper.style.cursor = 'grab';
+            els.fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+                els.fileInput.value = ''; 
             });
         }
 
-        // --- Element Manipulation & Snapping ---
-        function setupCanvasEvents() {
-            canvas.on('mouse:wheel', function(opt) {
-                var delta = opt.e.deltaY;
-                var zoom = currentZoom * (0.999 ** delta);
-                if (zoom > 5) zoom = 5;
-                if (zoom < 0.1) zoom = 0.1;
-                setZoom(zoom);
-                opt.e.preventDefault();
-                opt.e.stopPropagation();
-            });
-
-            canvas.on('mouse:down', function(opt) {
-                if (isSpaceDown) {
-                    opt.e.preventDefault();
-                    return;
-                }
-                if (targetSnapMode && opt.target) {
-                    targetElement = opt.target;
-                    logVerbose("Target element selected for snapping.");
-                    document.getElementById('targetSnapBtn').classList.remove('active');
-                    targetSnapMode = false;
-                } else if (isReplacingArea) {
-                    let pointer = canvas.getPointer(opt.e);
-                    replaceStartX = pointer.x;
-                    replaceStartY = pointer.y;
-                    replaceRect = new fabric.Rect({
-                        left: replaceStartX, top: replaceStartY, width: 0, height: 0,
-                        fill: 'rgba(59, 130, 246, 0.3)', stroke: '#3b82f6', strokeWidth: 2, strokeDashArray:[5, 5],
-                        selectable: false, evented: false
-                    });
-                    canvas.add(replaceRect);
-                }
-            });
-
-            canvas.on('mouse:move', function(opt) {
-                if (isReplacingArea && replaceRect) {
-                    let pointer = canvas.getPointer(opt.e);
-                    replaceRect.set({
-                        width: Math.abs(pointer.x - replaceStartX),
-                        height: Math.abs(pointer.y - replaceStartY),
-                        left: Math.min(pointer.x, replaceStartX),
-                        top: Math.min(pointer.y, replaceStartY)
-                    });
-                    canvas.renderAll();
-                }
-            });
-
-            canvas.on('mouse:up', function(opt) {
-                if (isReplacingArea && replaceRect) {
-                    isReplacingArea = false;
-                    canvas.defaultCursor = 'default';
-                    document.getElementById('replaceAreaBtn').classList.remove('active');
-                    canvas.selection = true;
-                    canvas.forEachObject(o => o.evented = true);
-                    
-                    if (replaceRect.width < 10 || replaceRect.height < 10) {
-                        canvas.remove(replaceRect);
-                        logVerbose("Replace area too small, cancelled.", "warn");
-                        return;
-                    }
-
-                    logVerbose("Area selected. Prompting for new image...");
-                    
-                    let input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = 'image/*';
-                    input.onchange = (e) => {
-                        let file = e.target.files[0];
-                        let reader = new FileReader();
-                        reader.onload = (f) => {
-                            fabric.Image.fromURL(f.target.result, (img) => {
-                                // Solid white mask
-                                let mask = new fabric.Rect({
-                                    left: replaceRect.left, top: replaceRect.top,
-                                    width: replaceRect.width, height: replaceRect.height,
-                                    fill: '#ffffff', strokeWidth: 0
-                                });
-                                
-                                img.scaleToWidth(replaceRect.width);
-                                img.scaleToHeight(replaceRect.height);
-                                img.set({ left: replaceRect.left, top: replaceRect.top });
-                                
-                                let group = new fabric.Group([mask, img], {
-                                    left: replaceRect.left, top: replaceRect.top
-                                });
-                                
-                                canvas.remove(replaceRect);
-                                canvas.add(group);
-                                canvas.setActiveObject(group);
-                                saveHistory();
-                                saveToLocal();
-                                logVerbose("Image replaced and grouped with mask successfully.");
-                            });
-                        };
-                        reader.readAsDataURL(file);
-                    };
-                    
-                    window.addEventListener('focus', function handler() {
-                        setTimeout(() => {
-                            if (replaceRect && canvas.contains(replaceRect)) {
-                                canvas.remove(replaceRect);
-                                logVerbose("Image replacement cancelled.");
-                            }
-                        }, 500);
-                        window.removeEventListener('focus', handler);
-                    });
-                    
-                    input.click();
-                }
-            });
-
-            canvas.on('object:moving', function(options) {
-                const obj = options.target;
-                if (targetElement && targetElement !== obj) {
-                    const targetCenter = targetElement.getCenterPoint();
-                    const objCenter = obj.getCenterPoint();
-                    if (Math.abs(objCenter.x - targetCenter.x) < 20) obj.set({ left: targetCenter.x - (obj.width * obj.scaleX)/2 });
-                    if (Math.abs(objCenter.y - targetCenter.y) < 20) obj.set({ top: targetCenter.y - (obj.height * obj.scaleY)/2 });
-                } else if (snapEnabled) {
-                    obj.set({
-                        left: Math.round(obj.left / GRID_SIZE) * GRID_SIZE,
-                        top: Math.round(obj.top / GRID_SIZE) * GRID_SIZE
-                    });
-                }
-            });
-
-            canvas.on('selection:created', updatePropertiesPanel);
-            canvas.on('selection:updated', updatePropertiesPanel);
-            canvas.on('selection:cleared', () => { document.getElementById('textProperties').style.display = 'none'; });
-
-            canvas.on('object:modified', () => { saveHistory(); saveToLocal(); });
-            canvas.on('object:added', () => { if(!isHistoryAction) { saveHistory(); saveToLocal(); }});
-            canvas.on('object:removed', () => { if(!isHistoryAction) { saveHistory(); saveToLocal(); }});
-        }
-
-        // --- UI Event Listeners ---
-        function setupEventListeners() {
-            document.getElementById('themeToggleBtn').onclick = () => {
-                const body = document.body;
-                if (body.getAttribute('data-theme') === 'light') body.removeAttribute('data-theme');
-                else body.setAttribute('data-theme', 'light');
-            };
-
-            document.getElementById('toggleLogsBtn').onclick = () => {
-                const logs = document.getElementById('floatingLogs');
-                logs.style.display = logs.style.display === 'none' ? 'flex' : 'none';
-            };
-
-            document.getElementById('gridToggleBtn').onclick = (e) => {
-                const overlay = document.getElementById('gridOverlay');
-                overlay.classList.toggle('active');
-                e.target.classList.toggle('active');
-                updateGrid();
-            };
-
-            document.getElementById('snapToggleBtn').onclick = (e) => {
-                snapEnabled = !snapEnabled;
-                e.target.classList.toggle('active');
-            };
-
-            document.getElementById('targetSnapBtn').onclick = (e) => {
-                targetSnapMode = !targetSnapMode;
-                e.target.classList.toggle('active');
-                if(targetSnapMode) logVerbose("Target Snap Mode: Click an element to set it as the snap target.");
-            };
-
-            document.getElementById('replaceAreaBtn').onclick = (e) => {
-                if(!pdfDoc) return alert("Please open a PDF first.");
-                isReplacingArea = !isReplacingArea;
-                e.target.classList.toggle('active');
-                if(isReplacingArea) {
-                    canvas.defaultCursor = 'crosshair';
-                    canvas.discardActiveObject();
-                    canvas.selection = false;
-                    canvas.forEachObject(o => o.evented = false);
-                    logVerbose("Replace Area Mode: Draw a rectangle over the image you want to replace.");
-                } else {
-                    canvas.defaultCursor = 'default';
-                    canvas.selection = true;
-                    canvas.forEachObject(o => o.evented = true);
-                    if(replaceRect) canvas.remove(replaceRect);
-                }
-            };
-
-            document.getElementById('addTextBtn').onclick = () => {
-                if(!pdfDoc) return alert("Please open a PDF first.");
-                const center = canvas.getVpCenter();
-                const text = new fabric.IText('Double click to edit', {
-                    left: center.x - 80, top: center.y - 10, fontFamily: 'Helvetica', fontSize: 20, fill: '#000000'
-                });
-                canvas.add(text);
-                canvas.setActiveObject(text);
-                logVerbose("Added new text element.");
-            };
-
-            document.getElementById('imageInput').addEventListener('change', function(e) {
-                if(!pdfDoc) return alert("Please open a PDF first.");
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = function(f) {
-                    fabric.Image.fromURL(f.target.result, function(img) {
-                        const center = canvas.getVpCenter();
-                        img.scaleToWidth(200);
-                        img.set({ left: center.x - 100, top: center.y - (img.getScaledHeight()/2) });
-                        canvas.add(img);
-                        canvas.setActiveObject(img);
-                        logVerbose("Added new image element.");
-                    });
-                };
-                reader.readAsDataURL(file);
-                e.target.value = ''; 
-            });
-
-            document.getElementById('alignCenterH').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { obj.centerH(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }};
-            document.getElementById('alignCenterV').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { obj.centerV(); obj.setCoords(); canvas.renderAll(); saveHistory(); saveToLocal(); }};
-
-            document.getElementById('bringFrontBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringToFront(obj); saveHistory(); saveToLocal(); }};
-            document.getElementById('bringForwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringForward(obj); saveHistory(); saveToLocal(); }};
-            document.getElementById('sendBackwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendBackwards(obj); saveHistory(); saveToLocal(); }};
-            document.getElementById('sendBackBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendToBack(obj); saveHistory(); saveToLocal(); }};
-
-            document.getElementById('lockBtn').onclick = () => {
-                const obj = canvas.getActiveObject();
-                if(obj) {
-                    obj.lockMovementX = !obj.lockMovementX;
-                    obj.lockMovementY = !obj.lockMovementY;
-                    obj.lockRotation = !obj.lockRotation;
-                    obj.lockScalingX = !obj.lockScalingX;
-                    obj.lockScalingY = !obj.lockScalingY;
-                    obj.hasControls = !obj.lockMovementX;
-                    canvas.renderAll();
-                    logVerbose(`Element ${obj.lockMovementX ? 'locked' : 'unlocked'}.`);
-                }
-            };
-            
-            const delFn = () => {
-                const activeObjects = canvas.getActiveObjects();
-                if (activeObjects.length) {
-                    canvas.discardActiveObject();
-                    activeObjects.forEach(function(object) { canvas.remove(object); });
-                    logVerbose(`Deleted ${activeObjects.length} element(s).`);
-                    saveHistory();
-                    saveToLocal();
-                }
-            };
-            document.getElementById('deleteBtn').onclick = delFn;
-            document.getElementById('deleteToolbarBtn').onclick = delFn;
-
-            document.getElementById('fontFamily').onchange = (e) => updateTextProp('fontFamily', e.target.value);
-            document.getElementById('fontSize').onchange = (e) => updateTextProp('fontSize', parseInt(e.target.value));
-            document.getElementById('textColor').onchange = (e) => updateTextProp('fill', e.target.value);
-            document.getElementById('textAlignLeft').onclick = () => updateTextProp('textAlign', 'left');
-            document.getElementById('textAlignCenter').onclick = () => updateTextProp('textAlign', 'center');
-            document.getElementById('textAlignRight').onclick = () => updateTextProp('textAlign', 'right');
-            document.getElementById('textAlignJustify').onclick = () => updateTextProp('textAlign', 'justify');
-
-            document.getElementById('undoBtn').onclick = undo;
-            document.getElementById('redoBtn').onclick = redo;
-            document.getElementById('exportBtn').onclick = exportPDF;
-        }
-
-        function updatePropertiesPanel() {
-            const obj = canvas.getActiveObject();
-            if (!obj) {
-                document.getElementById('textProperties').style.display = 'none';
+        function handleFiles(fileList) {
+            const xmlFiles = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.xml'));
+            if (xmlFiles.length === 0) {
+                log("No XML files found.", 'error');
                 return;
             }
-            if (obj.type === 'i-text' || obj.type === 'text') {
-                document.getElementById('textProperties').style.display = 'block';
-                document.getElementById('fontFamily').value = obj.fontFamily || 'Helvetica';
-                document.getElementById('fontSize').value = obj.fontSize || 16;
-                document.getElementById('textColor').value = obj.fill || '#000000';
-            } else {
-                document.getElementById('textProperties').style.display = 'none';
-            }
+            state.filesToProcess = xmlFiles;
+            state.processedFiles = [];
+            state.analytics = { runs: [], points: [], holeStages:[] };
+            log(`${xmlFiles.length} XML file(s) loaded. Ready.`, 'info');
+            updateStateUI();
         }
 
-        function updateTextProp(prop, value) {
-            const obj = canvas.getActiveObject();
-            if (obj && (obj.type === 'i-text' || obj.type === 'text')) {
-                obj.set(prop, value);
-                canvas.renderAll();
-                saveHistory();
-                saveToLocal();
+        // ==========================================
+        // CORE PIPELINE: FORMATTER + PARSER + ANALYTICS
+        // ==========================================
+        async function processFiles() {
+            els.btnProcess.disabled = true;
+            log("Starting processing pipeline...", 'info');
+            
+            let allRawText = "";
+
+            for (let i = 0; i < state.filesToProcess.length; i++) {
+                let file = state.filesToProcess[i];
+                els.statusText.innerText = t('statusProcessing').replace('{0}', i + 1).replace('{1}', state.filesToProcess.length);
+                
+                try {
+                    let content = await file.text();
+                    
+                    // 1. Legacy Formatter (Regex Date Fix)
+                    let updatedContent = content.replace(/DATE="(\d{2})\.(\d{2})\.(\d{4})"/g, 'DATE="$3-$2-$1"');
+                    updatedContent = updatedContent.replace(/DATE="(\d{4}-\d{2}-\d{2})""/g, 'DATE="$1"');
+                    let newFileName = file.name.replace(/\.xml$/i, "_KLAR.xml");
+                    state.processedFiles.push({ name: newFileName, content: updatedContent });
+                    
+                    // Append to global text for analytics parser
+                    allRawText += updatedContent + "\n";
+                    
+                } catch (err) {
+                    log(`Error reading ${file.name}: ${err.message}`, 'error');
+                }
+                
+                els.progressBar.style.width = `${((i + 1) / state.filesToProcess.length) * 100}%`;
+                await new Promise(r => setTimeout(r, 10)); // UI breathe
             }
+            
+            log("Formatting complete. Starting data analytics parser...", 'info');
+            
+            // 2. Parse XML for Analytics
+            parsePumpLog(allRawText);
+            
+            // 3. Compute Metrics
+            computeRunMetrics();
+            computeHoleStageRollups();
+            
+            log("Analytics pipeline complete.", 'success');
+            updateStateUI();
+            renderDashboard();
         }
 
-        // --- Keyboard Shortcuts ---
-        function setupKeyboardShortcuts() {
-            window.addEventListener('keydown', function(e) {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || canvas.getActiveObject()?.isEditing) return;
+        // ==========================================
+        // XML PARSER (STATE MACHINE)
+        // ==========================================
+        function parseAttributes(attrStr) {
+            const attrs = {};
+            const regex = /([A-Z0-9_]+)="([^"]*)"/g;
+            let match;
+            while ((match = regex.exec(attrStr)) !== null) {
+                let val = match[2];
+                if (/^-?\d+,\d+$/.test(val)) val = val.replace(',', '.'); // Handle comma decimals
+                attrs[match[1]] = val;
+            }
+            return attrs;
+        }
 
-                const obj = canvas.getActiveObject();
-                const step = e.shiftKey ? 10 : 1;
+        function parsePumpLog(text) {
+            const tagRegex = /<(header|data|footer)\s+([^>]+)\/?>/gi;
+            let match;
+            
+            let currentRunByChannel = {};
+            let runCounter = 0;
 
-                if (e.key === 'Delete' || e.key === 'Backspace') {
-                    document.getElementById('deleteBtn').click();
-                    e.preventDefault();
-                } else if (e.key === 'Escape') {
-                    canvas.discardActiveObject();
-                    canvas.renderAll();
-                    if(isReplacingArea) {
-                        isReplacingArea = false;
-                        canvas.defaultCursor = 'default';
-                        document.getElementById('replaceAreaBtn').classList.remove('active');
-                        canvas.selection = true;
-                        canvas.forEachObject(o => o.evented = true);
-                        if(replaceRect) canvas.remove(replaceRect);
+            while ((match = tagRegex.exec(text)) !== null) {
+                const tagType = match[1].toLowerCase();
+                const attrs = parseAttributes(match[2]);
+                const ch = attrs.CH || "0";
+
+                if (tagType === 'header') {
+                    // If a run is already open for this channel, close it forcefully
+                    if (currentRunByChannel[ch]) {
+                        log(`Warning: Orphaned run closed on CH ${ch}`, 'warning');
+                        state.analytics.runs.push(currentRunByChannel[ch]);
                     }
-                } else if (e.ctrlKey && e.key === 'c') {
-                    if(obj) obj.clone((cloned) => { window.clipboard = cloned; logVerbose("Element copied."); });
-                } else if (e.ctrlKey && e.key === 'v') {
-                    if(window.clipboard) {
-                        window.clipboard.clone((clonedObj) => {
-                            canvas.discardActiveObject();
-                            clonedObj.set({ left: clonedObj.left + 10, top: clonedObj.top + 10, evented: true });
-                            if (clonedObj.type === 'activeSelection') {
-                                clonedObj.canvas = canvas;
-                                clonedObj.forEachObject((o) => canvas.add(o));
-                                clonedObj.setCoords();
-                            } else {
-                                canvas.add(clonedObj);
-                            }
-                            window.clipboard.top += 10; window.clipboard.left += 10;
-                            canvas.setActiveObject(clonedObj);
-                            canvas.requestRenderAll();
-                            logVerbose("Element pasted.");
-                            saveHistory();
-                            saveToLocal();
+                    
+                    runCounter++;
+                    const holeRaw = attrs.HOLE || "Unknown";
+                    const stage = attrs.STAGE || "1";
+                    
+                    currentRunByChannel[ch] = {
+                        runId: `R${runCounter}`,
+                        channel: ch,
+                        date: attrs.DATE,
+                        time: attrs.TIME,
+                        jobsite: attrs.JOBSITE || "",
+                        grp1: attrs.GRP1 || "",
+                        mixRaw: attrs.MIX || "",
+                        holeRaw: holeRaw,
+                        holeNorm: holeRaw.toLowerCase().trim(),
+                        stage: stage,
+                        holeStageKey: `${holeRaw.toLowerCase().trim()}_S${stage}`,
+                        lengthM: parseFloat(attrs.LENGTH) || 1,
+                        sampleIntervalS: parseFloat(attrs.SAMP) || 5,
+                        points:[],
+                        footer: null
+                    };
+                } 
+                else if (tagType === 'data') {
+                    if (currentRunByChannel[ch]) {
+                        currentRunByChannel[ch].points.push({
+                            runId: currentRunByChannel[ch].runId,
+                            p: parseFloat(attrs.P) || 0,
+                            q: parseFloat(attrs.Q) || 0,
+                            v: parseFloat(attrs.V) || 0
                         });
                     }
-                } else if (e.ctrlKey && e.key === 'z') {
-                    undo();
-                } else if (e.ctrlKey && e.key === 'y') {
-                    redo();
-                } else if (obj &&['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-                    e.preventDefault();
-                    if (e.key === 'ArrowUp') obj.top -= step;
-                    if (e.key === 'ArrowDown') obj.top += step;
-                    if (e.key === 'ArrowLeft') obj.left -= step;
-                    if (e.key === 'ArrowRight') obj.left += step;
-                    
-                    if(snapEnabled) {
-                        obj.left = Math.round(obj.left / GRID_SIZE) * GRID_SIZE;
-                        obj.top = Math.round(obj.top / GRID_SIZE) * GRID_SIZE;
+                } 
+                else if (tagType === 'footer') {
+                    if (currentRunByChannel[ch]) {
+                        currentRunByChannel[ch].footer = attrs;
+                        state.analytics.runs.push(currentRunByChannel[ch]);
+                        currentRunByChannel[ch] = null;
                     }
-                    obj.setCoords();
-                    canvas.renderAll();
-                    saveHistory();
-                    saveToLocal();
                 }
-            });
-        }
-
-        // --- Undo / Redo Stack (Per Page) ---
-        function getCanvasState() {
-            const json = canvas.toJSON();
-            delete json.backgroundImage; 
-            return json;
-        }
-
-        function saveHistory() {
-            if (isHistoryAction || !pdfDoc) return;
-            if (!pageHistories[currentPageNum]) {
-                pageHistories[currentPageNum] = { history:[], index: -1 };
             }
-            const ph = pageHistories[currentPageNum];
-            const json = getCanvasState();
-            ph.history = ph.history.slice(0, ph.index + 1);
-            ph.history.push(json);
-            ph.index++;
+            
+            // Cleanup any left open runs
+            for (let ch in currentRunByChannel) {
+                if (currentRunByChannel[ch]) {
+                    state.analytics.runs.push(currentRunByChannel[ch]);
+                }
+            }
         }
 
-        function loadState(state) {
-            const bgImage = canvas.backgroundImage; 
-            canvas.loadFromJSON(state, () => {
-                canvas.setBackgroundImage(bgImage, () => {
-                    canvas.renderAll();
-                    isHistoryAction = false;
-                    saveToLocal();
+        // ==========================================
+        // ANALYTICS ENGINE
+        // ==========================================
+        function computeRunMetrics() {
+            state.analytics.runs.forEach(run => {
+                const pts = run.points;
+                run.pointCount = pts.length;
+                
+                // Metadata flags
+                run.isTestLike = run.grp1.toLowerCase().includes('test') || run.holeNorm.includes('test');
+                
+                if (pts.length === 0) {
+                    run.isZeroTake = true;
+                    run.totalVolume = 0;
+                    run.pMax = 0; run.qMax = 0; run.totalDurationS = 0;
+                    run.classification = 'no_take';
+                    return;
+                }
+
+                let pArr = [], qArr =[], vArr =[];
+                let activeTime = 0, holdTime = 0;
+                
+                pts.forEach((pt, idx) => {
+                    pt.elapsedS = idx * run.sampleIntervalS;
+                    pArr.push(pt.p);
+                    qArr.push(pt.q);
+                    vArr.push(pt.v);
+                    
+                    pt.isActiveFlow = pt.q > CONFIG.ACTIVE_FLOW_THRESHOLD;
+                    if (pt.isActiveFlow) activeTime += run.sampleIntervalS;
+                    
+                    state.analytics.points.push(pt);
                 });
+
+                run.pMax = Math.max(...pArr);
+                run.pMean = pArr.reduce((a,b)=>a+b,0) / pts.length;
+                run.qMax = Math.max(...qArr);
+                run.qMean = qArr.reduce((a,b)=>a+b,0) / pts.length;
+                run.totalVolume = Math.max(...vArr) - Math.min(...vArr);
+                run.totalDurationS = pts.length * run.sampleIntervalS;
+                run.activePumpingTimeS = activeTime;
+                
+                // Footer overrides if exist
+                if (run.footer) {
+                    run.footerDurationS = parseFloat(run.footer.DURA) || run.totalDurationS;
+                    run.footerVolumeEnd = parseFloat(run.footer.VEND) || run.totalVolume;
+                    run.footerLuge = parseFloat(run.footer.LUGE) || 0;
+                    run.stopReason = run.footer.REASON || "Unknown";
+                } else {
+                    run.footerLuge = 0;
+                    run.stopReason = "No Footer";
+                }
+
+                run.isZeroTake = run.totalVolume < CONFIG.ZERO_TAKE_VOLUME_THRESHOLD;
+                
+                // Hold / Refusal logic
+                let highPThresh = run.pMax * 0.8;
+                pts.forEach(pt => {
+                    pt.isHold = (pt.q <= CONFIG.VERY_LOW_FLOW_THRESHOLD) && (pt.p >= highPThresh);
+                    if (pt.isHold) holdTime += run.sampleIntervalS;
+                });
+                run.holdTimeS = holdTime;
+                run.refusalIndex = run.totalDurationS > 0 ? holdTime / run.totalDurationS : 0;
+                run.volumePerMeter = run.totalVolume / run.lengthM;
+
+                // Classification
+                if (run.isTestLike) run.classification = 'test_or_nonproduction';
+                else if (run.isZeroTake) run.classification = 'no_take';
+                else if (run.refusalIndex > 0.3 && run.pMax > 10) run.classification = 'refusal_prone';
+                else if (run.stopReason.toLowerCase().includes('pressure')) run.classification = 'pressure_limited';
+                else if (run.activePumpingTimeS / run.totalDurationS < 0.5) run.classification = 'productive_unstable';
+                else run.classification = 'productive_stable';
             });
         }
 
-        function undo() {
-            const ph = pageHistories[currentPageNum];
-            if (ph && ph.index > 0) {
-                isHistoryAction = true;
-                ph.index--;
-                loadState(ph.history[ph.index]);
-                logVerbose("Undo performed.");
-            }
-        }
-
-        function redo() {
-            const ph = pageHistories[currentPageNum];
-            if (ph && ph.index < ph.history.length - 1) {
-                isHistoryAction = true;
-                ph.index++;
-                loadState(ph.history[ph.index]);
-                logVerbose("Redo performed.");
-            }
-        }
-
-        // --- Local Auto-Save ---
-        function saveToLocal() {
-            if(pdfDoc) {
-                try {
-                    pageCanvases[currentPageNum] = getCanvasState();
-                    localStorage.setItem('pdf_editor_draft', JSON.stringify(pageCanvases));
-                } catch (e) {
-                    logVerbose("Failed to save draft to localStorage (Quota exceeded?).", "warn");
-                }
-            }
-        }
-
-        function loadAutoSave() {
-            const draft = localStorage.getItem('pdf_editor_draft');
-            if (draft) {
-                try {
-                    pageCanvases = JSON.parse(draft);
-                    logVerbose("Draft loaded from localStorage. Upload the original PDF to apply.");
-                } catch (e) {
-                    console.error("Failed to parse draft", e);
-                }
-            }
-        }
-
-        // --- Export PDF (pdf-lib) ---
-        async function exportPDF() {
-            if (!pdfBytesOriginal) return;
+        function computeHoleStageRollups() {
+            const map = {};
             
-            showLoading(true, "Exporting PDF...");
-            document.getElementById('exportBtn').innerText = "Exporting...";
+            state.analytics.runs.forEach(run => {
+                if (run.isTestLike) return; // Exclude tests from rollups
+                
+                const key = run.holeStageKey;
+                if (!map[key]) {
+                    map[key] = {
+                        holeStageKey: key,
+                        holeRaw: run.holeRaw,
+                        stage: run.stage,
+                        runCount: 0,
+                        totalVolume: 0,
+                        totalDurationS: 0,
+                        activeTimeS: 0,
+                        holdTimeS: 0,
+                        peakPressure: 0,
+                        lugeSum: 0,
+                        refusalSum: 0,
+                        stopReasons: {}
+                    };
+                }
+                
+                let hs = map[key];
+                hs.runCount++;
+                hs.totalVolume += run.totalVolume;
+                hs.totalDurationS += run.totalDurationS;
+                hs.activeTimeS += run.activePumpingTimeS;
+                hs.holdTimeS += run.holdTimeS;
+                if (run.pMax > hs.peakPressure) hs.peakPressure = run.pMax;
+                hs.lugeSum += run.footerLuge;
+                hs.refusalSum += run.refusalIndex;
+                
+                hs.stopReasons[run.stopReason] = (hs.stopReasons[run.stopReason] || 0) + 1;
+            });
+
+            state.analytics.holeStages = Object.values(map).map(hs => {
+                hs.retryCount = hs.runCount - 1;
+                hs.meanFooterLuge = hs.lugeSum / hs.runCount;
+                hs.weightedRefusalIndex = hs.refusalSum / hs.runCount;
+                hs.volumePerMeterTotal = hs.totalVolume / 10; // Assuming 10m default if not aggregated perfectly
+                
+                // Dominant stop reason
+                hs.dominantStopReason = Object.keys(hs.stopReasons).reduce((a, b) => hs.stopReasons[a] > hs.stopReasons[b] ? a : b, "Unknown");
+                
+                // Difficulty Score (0-100)
+                // Normalize components (heuristic max values)
+                let normDur = Math.min(hs.totalDurationS / 3600, 1); // max 1 hour
+                let normVol = Math.min(hs.volumePerMeterTotal / 500, 1); // max 500 L/m
+                let normRetry = Math.min(hs.retryCount / 5, 1); // max 5 retries
+                let normPeakP = Math.min(hs.peakPressure / 40, 1); // max 40 bar
+                
+                hs.overallDifficultyScore = (
+                    (normDur * CONFIG.WEIGHTS.duration) +
+                    (normVol * CONFIG.WEIGHTS.volPerMeter) +
+                    (hs.weightedRefusalIndex * CONFIG.WEIGHTS.refusal) +
+                    (normRetry * CONFIG.WEIGHTS.retry) +
+                    (normPeakP * CONFIG.WEIGHTS.peakP)
+                ) * 100;
+
+                // Overall Status
+                if (hs.overallDifficultyScore > 60) hs.status = 'bad';
+                else if (hs.overallDifficultyScore > 30 || hs.retryCount > 1) hs.status = 'warn';
+                else hs.status = 'good';
+
+                return hs;
+            });
             
+            // Sort by difficulty descending
+            state.analytics.holeStages.sort((a, b) => b.overallDifficultyScore - a.overallDifficultyScore);
+        }
+
+        // ==========================================
+        // VISUALIZATION ENGINE (PLOTLY)
+        // ==========================================
+        function getPlotlyLayout(title, xAxis, yAxis) {
+            const isDark = state.theme === 'dark';
+            const fontColor = isDark ? '#f5f5f7' : '#1d1d1f';
+            const gridColor = isDark ? '#38383a' : '#e5e5ea';
+            
+            return {
+                title: { text: title, font: { color: fontColor, family: 'SF Pro Text, sans-serif' } },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: fontColor },
+                xaxis: { title: xAxis, gridcolor: gridColor, zerolinecolor: gridColor },
+                yaxis: { title: yAxis, gridcolor: gridColor, zerolinecolor: gridColor },
+                margin: { t: 40, r: 20, b: 40, l: 50 }
+            };
+        }
+
+        function renderDashboard() {
+            const runs = state.analytics.runs.filter(r => !r.isTestLike);
+            const hs = state.analytics.holeStages;
+            
+            // 1. KPI Cards
+            const totalVol = runs.reduce((sum, r) => sum + r.totalVolume, 0);
+            const totalActiveTime = runs.reduce((sum, r) => sum + r.activePumpingTimeS, 0) / 3600;
+            const refusalCount = runs.filter(r => r.classification === 'refusal_prone').length;
+            const zeroCount = runs.filter(r => r.isZeroTake).length;
+
+            document.getElementById('kpi-container').innerHTML = `
+                <div class="kpi-card"><div class="kpi-value">${runs.length}</div><div class="kpi-label">${t('kpiRuns')}</div></div>
+                <div class="kpi-card"><div class="kpi-value">${hs.length}</div><div class="kpi-label">${t('kpiHoles')}</div></div>
+                <div class="kpi-card"><div class="kpi-value">${totalVol.toFixed(0)}</div><div class="kpi-label">${t('kpiVol')}</div></div>
+                <div class="kpi-card"><div class="kpi-value">${totalActiveTime.toFixed(1)}</div><div class="kpi-label">${t('kpiTime')}</div></div>
+                <div class="kpi-card"><div class="kpi-value" style="color:var(--error)">${refusalCount}</div><div class="kpi-label">${t('kpiRefusal')}</div></div>
+                <div class="kpi-card"><div class="kpi-value" style="color:var(--warning)">${zeroCount}</div><div class="kpi-label">${t('kpiZero')}</div></div>
+            `;
+
+            // 2. Scatter Plot (Vol/m vs Peak P)
+            const scatterData =[{
+                x: hs.map(h => h.volumePerMeterTotal),
+                y: hs.map(h => h.peakPressure),
+                text: hs.map(h => `${h.holeStageKey}<br>Diff: ${h.overallDifficultyScore.toFixed(1)}`),
+                mode: 'markers',
+                marker: {
+                    size: hs.map(h => Math.max(10, Math.min(h.totalDurationS / 100, 40))),
+                    color: hs.map(h => h.overallDifficultyScore),
+                    colorscale: 'RdYlGn',
+                    reversescale: true,
+                    showscale: true
+                }
+            }];
+            Plotly.newPlot('chart-scatter', scatterData, getPlotlyLayout('Volume vs Pressure (Bubble=Duration)', 'Volume/m (L/m)', 'Peak Pressure (bar)'), {responsive: true});
+
+            // 3. Cumulative Volume Curve
+            let cumVol = 0;
+            const cumVolData =[{
+                x: runs.map((_, i) => i + 1),
+                y: runs.map(r => { cumVol += r.totalVolume; return cumVol; }),
+                type: 'scatter', mode: 'lines', line: { color: '#0071e3', width: 3 }, fill: 'tozeroy'
+            }];
+            Plotly.newPlot('chart-cumulative', cumVolData, getPlotlyLayout('Cumulative Injected Volume', 'Run Sequence', 'Total Volume (L)'), {responsive: true});
+
+            // 4. Ranked Bar Chart (Difficulty)
+            const topHs = hs.slice(0, 10).reverse();
+            const barData =[{
+                y: topHs.map(h => h.holeStageKey),
+                x: topHs.map(h => h.overallDifficultyScore),
+                type: 'bar', orientation: 'h', marker: { color: '#ff3b30' }
+            }];
+            Plotly.newPlot('chart-bar', barData, getPlotlyLayout('Top 10 Difficult Hole-Stages', 'Difficulty Score (0-100)', ''), {responsive: true});
+
+            // 5. Stop Reason Pie
+            const reasons = {};
+            runs.forEach(r => { reasons[r.stopReason] = (reasons[r.stopReason] || 0) + 1; });
+            const pieData =[{
+                labels: Object.keys(reasons),
+                values: Object.values(reasons),
+                type: 'pie', hole: 0.4, marker: { colors:['#0071e3', '#34c759', '#ff9f0a', '#ff3b30', '#af52de'] }
+            }];
+            let pieLayout = getPlotlyLayout('Stop Reasons', '', '');
+            pieLayout.xaxis = undefined; pieLayout.yaxis = undefined;
+            Plotly.newPlot('chart-pie', pieData, pieLayout, {responsive: true});
+
+            // 6. Table
+            const tbody = document.querySelector('#rollup-table tbody');
+            tbody.innerHTML = '';
+            hs.forEach(h => {
+                const tr = document.createElement('tr');
+                tr.onclick = () => openRunModal(h.holeStageKey);
+                let badgeText = h.status === 'good' ? 'Stable' : (h.status === 'warn' ? 'Review' : 'Difficult');
+                tr.innerHTML = `
+                    <td><strong>${h.holeStageKey}</strong></td>
+                    <td>${h.runCount}</td>
+                    <td>${h.totalVolume.toFixed(1)}</td>
+                    <td>${h.volumePerMeterTotal.toFixed(1)}</td>
+                    <td>${h.peakPressure.toFixed(1)}</td>
+                    <td>${(h.activeTimeS/60).toFixed(1)} min</td>
+                    <td>
+                        <div style="width: 100%; background: var(--border); height: 6px; border-radius: 3px;">
+                            <div style="width: ${h.overallDifficultyScore}%; background: ${h.status==='bad'?'var(--error)':(h.status==='warn'?'var(--warning)':'var(--success)')}; height: 100%; border-radius: 3px;"></div>
+                        </div>
+                    </td>
+                    <td><span class="badge ${h.status}">${badgeText}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ==========================================
+        // MODAL & RUN DETAILS
+        // ==========================================
+        function openRunModal(holeStageKey) {
+            const runs = state.analytics.runs.filter(r => r.holeStageKey === holeStageKey);
+            if(runs.length === 0) return;
+            
+            // For simplicity, show the longest run in this hole-stage
+            const run = runs.reduce((prev, current) => (prev.totalDurationS > current.totalDurationS) ? prev : current);
+            
+            document.getElementById('modal-title').innerText = `Run Details: ${run.runId} (${holeStageKey})`;
+            
+            const badges = document.getElementById('modal-badges');
+            badges.innerHTML = `
+                <span class="badge good">Vol: ${run.totalVolume.toFixed(1)} L</span>
+                <span class="badge warn">Peak P: ${run.pMax.toFixed(1)} bar</span>
+                <span class="badge bad">Stop: ${run.stopReason}</span>
+                <span class="badge" style="background:var(--border); color:var(--text-main)">Class: ${run.classification}</span>
+            `;
+
+            const pts = run.points;
+            const time = pts.map(p => p.elapsedS);
+            
+            // Chart 1: P & Q vs Time
+            const traceP = { x: time, y: pts.map(p => p.p), name: 'Pressure (bar)', type: 'scatter', line: {color: '#ff3b30'} };
+            const traceQ = { x: time, y: pts.map(p => p.q), name: 'Flow (L/min)', type: 'scatter', yaxis: 'y2', line: {color: '#0071e3'} };
+            const layoutTime = getPlotlyLayout('Pressure & Flow vs Time', 'Time (s)', 'Pressure (bar)');
+            layoutTime.yaxis2 = { title: 'Flow (L/min)', overlaying: 'y', side: 'right', gridcolor: 'rgba(0,0,0,0)' };
+            Plotly.newPlot('modal-chart-time', [traceP, traceQ], layoutTime, {responsive: true});
+
+            // Chart 2: P vs V
+            const tracePV = { x: pts.map(p => p.v), y: pts.map(p => p.p), type: 'scatter', mode: 'lines', line: {color: '#af52de'} };
+            Plotly.newPlot('modal-chart-pv', [tracePV], getPlotlyLayout('Pressure vs Cumulative Volume', 'Volume (L)', 'Pressure (bar)'), {responsive: true});
+
+            // Chart 3: Q vs P Scatter
+            const traceScatter = { 
+                x: pts.map(p => p.p), y: pts.map(p => p.q), type: 'scatter', mode: 'markers',
+                marker: { color: time, colorscale: 'Viridis', showscale: true, size: 6 }
+            };
+            Plotly.newPlot('modal-chart-scatter', [traceScatter], getPlotlyLayout('Flow vs Pressure (Color=Time)', 'Pressure (bar)', 'Flow (L/min)'), {responsive: true});
+
+            els.modal.classList.add('active');
+        }
+
+        function closeModal() {
+            els.modal.classList.remove('active');
+        }
+
+        // ==========================================
+        // CSV EXPORT
+        // ==========================================
+        function exportCSV(type) {
+            let data =[];
+            let filename = "";
+            
+            if (type === 'runs') {
+                data = state.analytics.runs.map(r => ({
+                    RunID: r.runId, HoleStage: r.holeStageKey, Date: r.date, Time: r.time,
+                    TotalVolume: r.totalVolume.toFixed(2), PeakPressure: r.pMax.toFixed(2),
+                    DurationS: r.totalDurationS, StopReason: r.stopReason, Classification: r.classification
+                }));
+                filename = "runs_summary.csv";
+            } else if (type === 'holestages') {
+                data = state.analytics.holeStages.map(h => ({
+                    HoleStage: h.holeStageKey, Runs: h.runCount, TotalVolume: h.totalVolume.toFixed(2),
+                    PeakPressure: h.peakPressure.toFixed(2), DifficultyScore: h.overallDifficultyScore.toFixed(2),
+                    DominantStopReason: h.dominantStopReason
+                }));
+                filename = "hole_stage_summary.csv";
+            }
+
+            if(data.length === 0) return;
+
+            const headers = Object.keys(data[0]);
+            const csvRows = [headers.join(',')];
+            
+            data.forEach(row => {
+                csvRows.push(headers.map(h => `"${row[h]}"`).join(','));
+            });
+
+            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // ==========================================
+        // LEGACY DOWNLOAD LOGIC (_KLAR.xml)
+        // ==========================================
+        async function downloadIndividually() {
+            for (let i = 0; i < state.processedFiles.length; i++) {
+                let pf = state.processedFiles[i];
+                const blob = new Blob([pf.content], { type: "application/xml" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = pf.name;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                if (state.processedFiles.length > 1) await new Promise(r => setTimeout(r, 400));
+            }
+        }
+
+        async function downloadZip() {
+            if (typeof JSZip === 'undefined') return;
+            els.btnDownloadZip.disabled = true;
             try {
-                logVerbose("Saving current page state...");
-                pageCanvases[currentPageNum] = getCanvasState();
-
-                logVerbose("Loading original PDF vector data into pdf-lib...");
-                const pdfDocLib = await PDFLib.PDFDocument.load(pdfBytesOriginal);
-                const pages = pdfDocLib.getPages();
-
-                for (let i = 1; i <= pdfDoc.numPages; i++) {
-                    const pageData = pageCanvases[i];
-                    if (!pageData || pageData.objects.length === 0) continue;
-
-                    logVerbose(`Processing edits for Page ${i}...`);
-                    const pdfPage = pages[i - 1];
-                    const { width, height } = pdfPage.getSize();
-                    
-                    // Create a temporary canvas to parse JSON and ungroup elements for absolute coordinates
-                    const tempCanvas = new fabric.StaticCanvas(null, { width: width, height: height });
-                    await new Promise(resolve => tempCanvas.loadFromJSON(pageData, resolve));
-                    
-                    // Ungroup all groups to get absolute coordinates for export (Crucial for Replace Image tool)
-                    const objects = tempCanvas.getObjects();
-                    let flatObjects =[];
-                    
-                    objects.forEach(obj => {
-                        if (obj.type === 'group') {
-                            const groupObjects = obj.getObjects();
-                            const groupMatrix = obj.calcTransformMatrix();
-                            groupObjects.forEach(gObj => {
-                                const matrix = fabric.util.multiplyTransformMatrices(groupMatrix, gObj.calcTransformMatrix());
-                                const options = fabric.util.qrDecompose(matrix);
-                                const absObj = fabric.util.object.clone(gObj);
-                                absObj.set({
-                                    left: options.translateX, top: options.translateY,
-                                    scaleX: options.scaleX, scaleY: options.scaleY,
-                                    angle: options.angle
-                                });
-                                flatObjects.push(absObj);
-                            });
-                        } else {
-                            flatObjects.push(obj);
-                        }
-                    });
-
-                    for (const obj of flatObjects) {
-                        // PDF-lib uses bottom-left origin, Fabric uses top-left
-                        const yPos = height - obj.top - (obj.height * obj.scaleY);
-
-                        if (obj.type === 'rect') {
-                            const rgb = hexToRgb(obj.fill || '#ffffff');
-                            pdfPage.drawRectangle({
-                                x: obj.left,
-                                y: yPos,
-                                width: obj.width * obj.scaleX,
-                                height: obj.height * obj.scaleY,
-                                color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255)
-                            });
-                        } else if (obj.type === 'i-text' || obj.type === 'text') {
-                            let font;
-                            if(obj.fontFamily === 'Times New Roman') font = await pdfDocLib.embedFont(PDFLib.StandardFonts.TimesRoman);
-                            else if(obj.fontFamily === 'Courier') font = await pdfDocLib.embedFont(PDFLib.StandardFonts.Courier);
-                            else font = await pdfDocLib.embedFont(PDFLib.StandardFonts.Helvetica);
-
-                            const rgb = hexToRgb(obj.fill || '#000000');
-                            const lines = obj.textLines || obj.text.split('\n');
-                            const lineHeight = obj.fontSize * obj.lineHeight;
-                            
-                            lines.forEach((line, index) => {
-                                let lineWidth = font.widthOfTextAtSize(line, obj.fontSize);
-                                let offsetX = 0;
-                                if (obj.textAlign === 'center') offsetX = (obj.width - lineWidth) / 2;
-                                else if (obj.textAlign === 'right') offsetX = obj.width - lineWidth;
-                                
-                                pdfPage.drawText(line, {
-                                    x: obj.left + offsetX,
-                                    y: height - obj.top - obj.fontSize - (index * lineHeight),
-                                    size: obj.fontSize,
-                                    font: font,
-                                    color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255)
-                                });
-                            });
-                        } else if (obj.type === 'image') {
-                            const imgData = obj.getSrc();
-                            let embeddedImage;
-                            if (imgData.includes('image/png')) embeddedImage = await pdfDocLib.embedPng(imgData);
-                            else if (imgData.includes('image/jpeg')) embeddedImage = await pdfDocLib.embedJpg(imgData);
-                            
-                            if (embeddedImage) {
-                                pdfPage.drawImage(embeddedImage, {
-                                    x: obj.left,
-                                    y: yPos,
-                                    width: obj.width * obj.scaleX,
-                                    height: obj.height * obj.scaleY
-                                });
-                            }
-                        }
-                    }
-                }
-
-                logVerbose("Compiling final PDF bytes...");
-                const pdfBytes = await pdfDocLib.save();
-                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = 'edited_document.pdf';
-                link.click();
-                logVerbose("Export successful!");
-
-            } catch (error) {
-                logVerbose(`Export failed: ${error.message}`, "error");
-                alert("An error occurred during export. Check logs.");
+                const zip = new JSZip();
+                state.processedFiles.forEach(pf => zip.file(pf.name, pf.content));
+                const blob = await zip.generateAsync({ type: "blob" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = t('zipFilename');
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (err) {
+                log(`ZIP Error: ${err.message}`, 'error');
             } finally {
-                document.getElementById('exportBtn').innerHTML = '<i class="fas fa-download"></i> Export';
-                setTimeout(() => showLoading(false), 1500);
+                els.btnDownloadZip.disabled = false;
             }
         }
 
-        function hexToRgb(hex) {
-            var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 0, g: 0, b: 0 };
-        }
-
-        // Run init
+        // Boot
         init();
     </script>
 </body>
