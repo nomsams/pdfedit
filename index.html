@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced PDF Editor Pro</title>
     
-    <!-- Libraries -->
+    <!-- Libraries (Using highly stable 2.16.105 for PDF.js) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script>
       (function ensurePdfjsReady(){
@@ -23,7 +23,9 @@
             --bg-color: #121212; --panel-bg: #1e1e1e; --toolbar-bg: #000000;
             --text-color: #ffffff; --border-color: #333333; --accent-color: #3b82f6;
             --accent-text: #ffffff; --hover-bg: #2a2a2a; --canvas-bg: #0b0e14;
-        }[data-theme="light"] {
+        }
+
+        [data-theme="light"] {
             --bg-color: #f5f5f5; --panel-bg: #ffffff; --toolbar-bg: #e0e0e0;
             --text-color: #000000; --border-color: #cccccc; --accent-color: #3b82f6;
             --accent-text: #ffffff; --hover-bg: #e8e8e8; --canvas-bg: #d0d0d0;
@@ -122,6 +124,12 @@
             <button id="fitScreenBtn"><i class="fas fa-expand"></i> Fit</button>
         </div>
 
+        <div class="toolbar-group">
+            <button id="gridToggleBtn" title="Toggle Grid"><i class="fas fa-border-all"></i> Grid</button>
+            <button id="snapToggleBtn" class="active" title="Snap to Grid/Elements"><i class="fas fa-magnet"></i> Snap</button>
+            <button id="targetSnapBtn" title="Target Snap Mode"><i class="fas fa-crosshairs"></i> Target Snap</button>
+        </div>
+
         <div class="toolbar-group" style="margin-left: auto;">
             <button id="toggleLogsBtn" title="Toggle System Logs"><i class="fas fa-terminal"></i> Logs</button>
             <button id="themeToggleBtn"><i class="fas fa-adjust"></i> Theme</button>
@@ -207,6 +215,7 @@
             <div class="panel-section">
                 <h3>Element</h3>
                 <button id="lockBtn" style="width: 100%; justify-content: center;"><i class="fas fa-lock"></i> Lock/Unlock</button>
+                <button id="deleteBtn" class="danger" style="width: 100%; justify-content: center; margin-top: 5px;"><i class="fas fa-trash"></i> Delete</button>
             </div>
         </div>
     </div>
@@ -261,15 +270,20 @@
         let currentPdfPageWidth = 0;
         let currentPdfPageHeight = 0;
         let currentZoom = 1;
-        let bgCanvasElement = null; // Holds the raw high-res render for slicing
+        let bgCanvasElement = null; 
         let renderScale = 2.0;
 
         // Tool Modes
         let currentMode = 'select'; // 'select', 'cut', 'edit-text', 'replace-image'
         let actionRect = null;
         let startX = 0, startY = 0;
-        let extractedTextItems =[]; // Holds PDF text data for the current page
-        let textHighlightRects =[]; // Fabric objects showing editable text
+        let extractedTextItems = []; 
+        let textHighlightRects =[]; 
+
+        let snapEnabled = true;
+        let targetSnapMode = false;
+        let targetElement = null;
+        const GRID_SIZE = 20;
 
         const wrapper = document.getElementById('canvasWrapper');
         const container = document.getElementById('canvasContainer');
@@ -287,6 +301,7 @@
                 setupKeyboardShortcuts();
                 setupCanvasEvents();
                 setupNativePanning();
+                loadAutoSave();
                 logVerbose("Initialization complete. Ready for PDF upload.");
             } catch (e) {
                 logVerbose(`Initialization failed: ${e.message}`, "error");
@@ -449,9 +464,9 @@
                     });
                 } else {
                     canvas.renderAll();
+                    saveHistory(); // Save initial blank state
                 }
 
-                if (!pageHistories[pageNum]) saveHistory();
                 fitToScreen();
 
             } catch (error) {
@@ -462,6 +477,23 @@
         }
 
         // --- Superior Canvas Navigation ---
+        function updateContainerCentering() {
+            container.style.margin = '0';
+            const wrapperWidth = wrapper.clientWidth;
+            const wrapperHeight = wrapper.clientHeight;
+            const containerWidth = container.offsetWidth;
+            const containerHeight = container.offsetHeight;
+            
+            let marginTop = 0;
+            let marginLeft = 0;
+            
+            if (containerWidth < wrapperWidth) marginLeft = (wrapperWidth - containerWidth) / 2;
+            if (containerHeight < wrapperHeight) marginTop = (wrapperHeight - containerHeight) / 2;
+            
+            container.style.marginLeft = marginLeft + 'px';
+            container.style.marginTop = marginTop + 'px';
+        }
+
         function setZoom(zoom) {
             currentZoom = zoom;
             canvas.setZoom(zoom);
@@ -475,6 +507,8 @@
             container.style.height = newHeight + 'px';
             
             document.getElementById('zoomLevel').innerText = Math.round(zoom * 100) + '%';
+            updateGrid();
+            updateContainerCentering();
         }
 
         function fitToScreen() {
@@ -496,6 +530,7 @@
         document.getElementById('zoomInBtn').onclick = () => setZoom(currentZoom * 1.2);
         document.getElementById('zoomOutBtn').onclick = () => setZoom(currentZoom / 1.2);
         document.getElementById('fitScreenBtn').onclick = fitToScreen;
+        window.addEventListener('resize', () => { if (pdfDoc) updateContainerCentering(); });
 
         // --- Native Spacebar Panning ---
         let isSpaceDown = false;
@@ -554,9 +589,13 @@
 
         // --- Tool Modes & Canvas Events ---
         function setMode(mode) {
+            if (!pdfDoc) return;
             currentMode = mode;
+            
+            // Update UI
             document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelector(`.tool-btn[data-mode="${mode}"]`).classList.add('active');
+            const activeBtn = document.querySelector(`.tool-btn[data-mode="${mode}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
 
             // Cleanup previous mode artifacts
             if (actionRect) { canvas.remove(actionRect); actionRect = null; }
@@ -575,7 +614,7 @@
                 canvas.forEachObject(o => o.evented = false);
                 logVerbose(`Mode: ${mode === 'cut' ? 'Cut Element' : 'Replace Area'}. Draw a box on the canvas.`);
             } else if (mode === 'edit-text') {
-                canvas.defaultCursor = 'pointer';
+                canvas.defaultCursor = 'default';
                 canvas.discardActiveObject();
                 canvas.selection = false;
                 canvas.forEachObject(o => o.evented = false);
@@ -588,7 +627,6 @@
                         fill: 'rgba(59, 130, 246, 0.2)', stroke: '#3b82f6', strokeWidth: 1,
                         selectable: false, evented: true, hoverCursor: 'pointer'
                     });
-                    rect.textData = item; // Store data for click event
                     
                     rect.on('mousedown', function() {
                         // 1. Create White Eraser
@@ -622,16 +660,6 @@
         }
 
         function setupCanvasEvents() {
-            canvas.on('mouse:wheel', function(opt) {
-                var delta = opt.e.deltaY;
-                var zoom = currentZoom * (0.999 ** delta);
-                if (zoom > 5) zoom = 5;
-                if (zoom < 0.1) zoom = 0.1;
-                setZoom(zoom);
-                opt.e.preventDefault();
-                opt.e.stopPropagation();
-            });
-
             canvas.on('mouse:down', function(opt) {
                 if (isSpaceDown) return;
                 
@@ -643,7 +671,7 @@
                         left: startX, top: startY, width: 0, height: 0,
                         fill: currentMode === 'cut' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)', 
                         stroke: currentMode === 'cut' ? '#ef4444' : '#3b82f6', 
-                        strokeWidth: 2, strokeDashArray:[5, 5],
+                        strokeWidth: 2, strokeDashArray: [5, 5],
                         selectable: false, evented: false
                     });
                     canvas.add(actionRect);
@@ -679,7 +707,6 @@
 
                     if (currentMode === 'cut') {
                         logVerbose("Slicing element from background...");
-                        // Slice from high-res background canvas
                         const sliceCanvas = document.createElement('canvas');
                         sliceCanvas.width = rectProps.width * renderScale;
                         sliceCanvas.height = rectProps.height * renderScale;
@@ -700,12 +727,22 @@
                                 fill: '#ffffff', selectable: false, evented: false, isEraser: true
                             });
                             
-                            canvas.add(eraser);
-                            eraser.sendToBack();
-                            canvas.add(img);
-                            
+                            // Group them so they move together
+                            const group = new fabric.Group([eraser, img], {
+                                left: rectProps.left, top: rectProps.top
+                            });
+
+                            // Add a permanent eraser to the background so the original is hidden
+                            const bgEraser = new fabric.Rect({
+                                left: rectProps.left, top: rectProps.top, width: rectProps.width, height: rectProps.height,
+                                fill: '#ffffff', selectable: false, evented: false, isEraser: true
+                            });
+                            canvas.add(bgEraser);
+                            bgEraser.sendToBack();
+
+                            canvas.add(group);
                             setMode('select');
-                            canvas.setActiveObject(img);
+                            canvas.setActiveObject(group);
                             saveHistory();
                             logVerbose("Element successfully cut and made movable.");
                         });
@@ -745,12 +782,27 @@
                 }
             });
 
+            canvas.on('object:moving', function(options) {
+                const obj = options.target;
+                if (targetElement && targetElement !== obj) {
+                    const targetCenter = targetElement.getCenterPoint();
+                    const objCenter = obj.getCenterPoint();
+                    if (Math.abs(objCenter.x - targetCenter.x) < 20) obj.set({ left: targetCenter.x - (obj.width * obj.scaleX)/2 });
+                    if (Math.abs(objCenter.y - targetCenter.y) < 20) obj.set({ top: targetCenter.y - (obj.height * obj.scaleY)/2 });
+                } else if (snapEnabled) {
+                    obj.set({
+                        left: Math.round(obj.left / GRID_SIZE) * GRID_SIZE,
+                        top: Math.round(obj.top / GRID_SIZE) * GRID_SIZE
+                    });
+                }
+            });
+
             canvas.on('selection:created', updatePropertiesPanel);
             canvas.on('selection:updated', updatePropertiesPanel);
             canvas.on('selection:cleared', () => { document.getElementById('textProperties').style.display = 'none'; });
 
+            // Explicit History Triggers
             canvas.on('object:modified', () => { saveHistory(); });
-            canvas.on('object:added', (e) => { if(!isHistoryAction && !e.target.isEraser && currentMode === 'select') { saveHistory(); }});
         }
 
         // --- UI Event Listeners ---
@@ -767,7 +819,26 @@
 
             document.getElementById('toggleLogsBtn').onclick = () => {
                 const logs = document.getElementById('floatingLogs');
-                logs.style.display = logs.style.display === 'none' ? 'flex' : 'none';
+                const isHidden = window.getComputedStyle(logs).display === 'none';
+                logs.style.display = isHidden ? 'flex' : 'none';
+            };
+
+            document.getElementById('gridToggleBtn').onclick = (e) => {
+                const overlay = document.getElementById('gridOverlay');
+                overlay.classList.toggle('active');
+                e.target.classList.toggle('active');
+                updateGrid();
+            };
+
+            document.getElementById('snapToggleBtn').onclick = (e) => {
+                snapEnabled = !snapEnabled;
+                e.target.classList.toggle('active');
+            };
+
+            document.getElementById('targetSnapBtn').onclick = (e) => {
+                targetSnapMode = !targetSnapMode;
+                e.target.classList.toggle('active');
+                if(targetSnapMode) logVerbose("Target Snap Mode: Click an element to set it as the snap target.");
             };
 
             document.getElementById('addTextBtn').onclick = () => {
@@ -779,6 +850,7 @@
                 });
                 canvas.add(text);
                 canvas.setActiveObject(text);
+                saveHistory();
                 logVerbose("Added new text element.");
             };
 
@@ -795,6 +867,7 @@
                         img.set({ left: center.x - 100, top: center.y - (img.getScaledHeight()/2) });
                         canvas.add(img);
                         canvas.setActiveObject(img);
+                        saveHistory();
                         logVerbose("Added new image element.");
                     });
                 };
@@ -802,6 +875,29 @@
                 e.target.value = ''; 
             });
 
+            document.getElementById('alignCenterH').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { obj.centerH(); obj.setCoords(); canvas.renderAll(); saveHistory(); }};
+            document.getElementById('alignCenterV').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { obj.centerV(); obj.setCoords(); canvas.renderAll(); saveHistory(); }};
+
+            document.getElementById('bringFrontBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringToFront(obj); saveHistory(); }};
+            document.getElementById('bringForwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.bringForward(obj); saveHistory(); }};
+            document.getElementById('sendBackwardBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendBackwards(obj); saveHistory(); }};
+            document.getElementById('sendBackBtn').onclick = () => { const obj = canvas.getActiveObject(); if(obj) { canvas.sendToBack(obj); saveHistory(); }};
+
+            document.getElementById('lockBtn').onclick = () => {
+                const obj = canvas.getActiveObject();
+                if(obj) {
+                    obj.lockMovementX = !obj.lockMovementX;
+                    obj.lockMovementY = !obj.lockMovementY;
+                    obj.lockRotation = !obj.lockRotation;
+                    obj.lockScalingX = !obj.lockScalingX;
+                    obj.lockScalingY = !obj.lockScalingY;
+                    obj.hasControls = !obj.lockMovementX;
+                    canvas.renderAll();
+                    logVerbose(`Element ${obj.lockMovementX ? 'locked' : 'unlocked'}.`);
+                }
+            };
+            
+            // Unified Delete Function
             const delFn = () => {
                 const activeObjects = canvas.getActiveObjects();
                 if (activeObjects.length) {
@@ -814,14 +910,17 @@
             document.getElementById('deleteBtn').onclick = delFn;
             document.getElementById('deleteToolbarBtn').onclick = delFn;
 
-            document.getElementById('undoBtn').onclick = undo;
-            document.getElementById('redoBtn').onclick = redo;
-            document.getElementById('exportBtn').onclick = exportPDF;
-            
-            // Text Formatting
             document.getElementById('fontFamily').onchange = (e) => updateTextProp('fontFamily', e.target.value);
             document.getElementById('fontSize').onchange = (e) => updateTextProp('fontSize', parseInt(e.target.value));
             document.getElementById('textColor').onchange = (e) => updateTextProp('fill', e.target.value);
+            document.getElementById('textAlignLeft').onclick = () => updateTextProp('textAlign', 'left');
+            document.getElementById('textAlignCenter').onclick = () => updateTextProp('textAlign', 'center');
+            document.getElementById('textAlignRight').onclick = () => updateTextProp('textAlign', 'right');
+            document.getElementById('textAlignJustify').onclick = () => updateTextProp('textAlign', 'justify');
+
+            document.getElementById('undoBtn').onclick = undo;
+            document.getElementById('redoBtn').onclick = redo;
+            document.getElementById('exportBtn').onclick = exportPDF;
         }
 
         function updatePropertiesPanel() {
@@ -887,24 +986,51 @@
                     undo();
                 } else if (e.ctrlKey && e.key === 'y') {
                     redo();
+                } else if (obj && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                    e.preventDefault();
+                    let newTop = obj.top;
+                    let newLeft = obj.left;
+                    
+                    if (e.key === 'ArrowUp') newTop -= step;
+                    if (e.key === 'ArrowDown') newTop += step;
+                    if (e.key === 'ArrowLeft') newLeft -= step;
+                    if (e.key === 'ArrowRight') newLeft += step;
+                    
+                    if(snapEnabled) {
+                        newLeft = Math.round(newLeft / GRID_SIZE) * GRID_SIZE;
+                        newTop = Math.round(newTop / GRID_SIZE) * GRID_SIZE;
+                    }
+                    
+                    obj.set({ top: newTop, left: newLeft });
+                    obj.setCoords();
+                    canvas.renderAll();
+                    saveHistory();
                 }
             });
         }
 
-        // --- Undo / Redo Stack ---
+        // --- Explicit Undo / Redo Stack ---
         function getCanvasState() {
-            const json = canvas.toJSON(['isEraser']); // Keep custom property
+            const json = canvas.toJSON(['isEraser']); // Preserve custom properties
             delete json.backgroundImage; 
             return json;
         }
 
         function saveHistory() {
             if (isHistoryAction || !pdfDoc) return;
-            if (!pageHistories[currentPageNum]) pageHistories[currentPageNum] = { history:[], index: -1 };
+            if (!pageHistories[currentPageNum]) {
+                pageHistories[currentPageNum] = { history:[], index: -1 };
+            }
             const ph = pageHistories[currentPageNum];
-            ph.history = ph.history.slice(0, ph.index + 1);
+            
+            // Truncate future history if we are overwriting after an undo
+            if (ph.index < ph.history.length - 1) {
+                ph.history = ph.history.slice(0, ph.index + 1);
+            }
+            
             ph.history.push(getCanvasState());
             ph.index++;
+            saveToLocal();
         }
 
         function loadState(state) {
@@ -913,6 +1039,7 @@
                 canvas.setBackgroundImage(bgImage, () => {
                     canvas.renderAll();
                     isHistoryAction = false;
+                    saveToLocal();
                 });
             });
         }
@@ -934,6 +1061,30 @@
                 ph.index++;
                 loadState(ph.history[ph.index]);
                 logVerbose("Redo performed.");
+            }
+        }
+
+        // --- Local Auto-Save ---
+        function saveToLocal() {
+            if(pdfDoc) {
+                try {
+                    pageCanvases[currentPageNum] = getCanvasState();
+                    localStorage.setItem('pdf_editor_draft', JSON.stringify(pageCanvases));
+                } catch (e) {
+                    logVerbose("Failed to save draft to localStorage (Quota exceeded?).", "warn");
+                }
+            }
+        }
+
+        function loadAutoSave() {
+            const draft = localStorage.getItem('pdf_editor_draft');
+            if (draft) {
+                try {
+                    pageCanvases = JSON.parse(draft);
+                    logVerbose("Draft loaded from localStorage. Upload the original PDF to apply.");
+                } catch (e) {
+                    console.error("Failed to parse draft", e);
+                }
             }
         }
 
